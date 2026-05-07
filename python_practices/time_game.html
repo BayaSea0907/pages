@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>PyScript 2026.3.1</title>
+        <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
+        <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+    </head>
+    <body>
+        <h1>時間当てゲーム</h1>
+
+        <!-- state: loading -->
+        <div id="state-loading">
+            <p>Pyscript 読み込み中...</p>
+        </div>
+
+        <!-- state: menu -->
+        <div id="state-menu" style="display:none;">
+            <p>当てる秒数を選んでください。</p>
+            <ul style="list-style-type:none;">
+                <li><button py-click="select_time">5秒</button></li>
+                <li><button py-click="select_time">10秒</button></li>
+                <li><button py-click="select_time">30秒</button></li>
+                <li><button py-click="select_time">60秒</button></li>
+            </ul>
+        </div>
+
+        <p id="target-time" style="display:none;">目標秒数: <span id="target-second"></span>秒</p>
+
+        <!-- state: ready -->
+        <div id="state-ready" style="display:none;">
+            <p>スタートを押してから、ちょうど目標秒数が経ったときにストップを押してください。</p>
+            <div><button py-click="play">スタート</button></div>
+        </div>
+
+        <!-- state: playing -->
+        <div id="state-playing" style="display:none;">
+            <p id="perf-time"></p>
+            <div><button py-click="stop">ストップ</button></div>
+        </div>
+
+        <!-- state: result -->
+        <div id="state-result" style="display:none;">
+            <div><p id="result-text"></p></div>
+            <div><p id="evaluation-text"></p></div>
+            <div><button py-click="play_again">もう一度遊ぶ</button></div>
+        </div>
+
+        <py-config>
+            # zoneinfo は標準ライブラリだが、タイムゾーンのデータ自体は別パッケージ（tzdata）に入っている。通常の Python 環境ではOSがデータを持っているが、PyScript（Pyodide）はブラウザ上で動くためOSのデータが使えず、明示的に tzdata を読み込む必要がある
+            packages = ["tzdata"]
+        </py-config>
+
+        <py-script type="py">
+            import asyncio
+            import time
+            import pyscript
+            from pyscript import document
+
+            class GameState:
+                def __init__(self):
+                    self.reset()
+
+                def reset(self):
+                    self.target_second = 0
+                    self.start_second = 0
+                    self.stop_second = 0
+
+
+            def evaluate(error_second):
+                if error_second < 0.1:
+                    return "すごい！👏👏👏"
+                elif error_second < 0.5:
+                    return "なかなかの精度！👍"
+                elif error_second < 1.0:
+                    return "まずまずですね。👌"
+                else:
+                    return "もう少し頑張りましょう！😇"
+
+
+            class GameUI:
+                def switch_state(self, current_state, next_state):
+                    document.getElementById(current_state).style.display = "none"
+                    document.getElementById(next_state).style.display = "block"
+
+                def show_target_time(self, seconds):
+                    document.getElementById("target-second").innerHTML = seconds
+                    document.getElementById("target-time").style.display = "block"
+
+                def hide_target_time(self):
+                    document.getElementById("target-time").style.display = "none"
+
+                def update_perf_time(self, elapsed):
+                    document.getElementById("perf-time").innerHTML = elapsed
+
+                def show_stop_second(self, stop_second):
+                    document.getElementById("result-text").innerHTML = f"あなたの秒数: {stop_second}秒"
+
+                def show_evaluation(self, evaluation):
+                    document.getElementById("evaluation-text").innerHTML = evaluation
+
+
+            class Game:
+                def __init__(self):
+                    self.state = GameState()
+                    self.ui = GameUI()
+
+                def select_time(self, event):
+                    self.state.target_second = int(event.target.innerHTML.rstrip("秒"))
+                    self.ui.show_target_time(self.state.target_second)
+                    self.ui.switch_state("state-menu", "state-ready")
+
+                def play(self, event):
+                    self.state.start_second = time.perf_counter()
+                    asyncio.create_task(self.playing(), name="playing")
+                    self.ui.switch_state("state-ready", "state-playing")
+
+                async def playing(self):
+                    while True:
+                        elapsed = round(time.perf_counter() - self.state.start_second, 2)
+                        # デバッグ用。経過秒数を表示する
+                        # self.ui.update_perf_time(elapsed)
+                        await asyncio.sleep(1)
+
+                def _cancel_tasks(self):
+                    current = asyncio.current_task()
+                    for task in asyncio.all_tasks():
+                        if task != current:
+                            task.cancel()
+
+                def stop(self, event):
+                    self.state.stop_second = round((time.perf_counter() - self.state.start_second), 2)
+                    error_second = round(abs(self.state.target_second - self.state.stop_second), 2)
+
+                    self.ui.show_stop_second(self.state.stop_second)
+                    self.ui.show_evaluation(evaluate(error_second))
+                    self._cancel_tasks()
+                    self.ui.switch_state("state-playing", "state-result")
+
+                def play_again(self, event):
+                    self.state.reset()
+                    self.ui.hide_target_time()
+                    self.ui.switch_state("state-result", "state-menu")
+
+
+            # エントリーポイント
+            game = Game()
+
+            # py-click はモジュールレベルの名前を参照するため束縛が必要
+            select_time = game.select_time
+            play = game.play
+            stop = game.stop
+            play_again = game.play_again
+
+            game.ui.switch_state("state-loading", "state-menu")
+
+        </py-script>
+    </body>
+</html>
