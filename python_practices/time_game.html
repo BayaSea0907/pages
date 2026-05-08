@@ -6,13 +6,25 @@
         <title>PyScript 2026.3.1</title>
         <link rel="stylesheet" href="https://pyscript.net/releases/2026.3.1/core.css" />
         <script type="module" src="https://pyscript.net/releases/2026.3.1/core.js"></script>
+        <style>
+            @keyframes spin {
+                from { transform: rotate(0deg); }
+                to { transform: rotate(360deg); }
+            }
+            #loading-spinner {
+                font-size: 40px;
+                display: inline-block;
+                animation: spin 1s linear infinite;
+            }
+        </style>
     </head>
     <body>
-        <h1>秒数当てゲーム</h1>
+        <h1>⏱️秒数当てゲーム</h1>
 
         <!-- state: loading -->
         <div id="state-loading">
             <p>Pyscript 読み込み中...</p>
+            <span id="loading-spinner">️🌀</span>
         </div>
 
         <!-- state: menu -->
