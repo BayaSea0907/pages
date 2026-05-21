@@ -55,6 +55,23 @@
                 justify-content: center;
                 align-items: center;
             }
+            /* canvas とリンクをまとめる縦並びコンテナ */
+            .playing-wrapper {
+                display: flex;
+                flex-direction: column;
+                align-items: stretch;
+                max-width: 100%;
+            }
+            /* 「タイトルに戻る」リンク */
+            .back-link {
+                display: block;
+                text-align: right;
+                padding: 0 0 4px;
+                font-size: 0.78em;
+                color: #aaa;
+                text-decoration: none;
+            }
+            .back-link:hover { color: #777; }
             /* スタート・リトライボタン */
             .action-btn {
                 padding: 12px 28px;
@@ -186,7 +203,10 @@
 
         <!-- state: playing -->
         <div id="state-playing" style="display:none;">
-            <canvas id="game-canvas" width="600" height="400"></canvas>
+            <div class="playing-wrapper">
+                <a href="#" id="back-to-menu-link" class="back-link">タイトルに戻る</a>
+                <canvas id="game-canvas" width="600" height="400"></canvas>
+            </div>
         </div>
 
         <!-- state: result -->
@@ -481,6 +501,10 @@
 
             document.getElementById("start-btn").addEventListener("click", startGame);
             document.getElementById("retry-btn").addEventListener("click", returnToMenu);
+            document.getElementById("back-to-menu-link").addEventListener("click", (e) => {
+                e.preventDefault();
+                returnToMenu();
+            });
 
             // Esc キーでメニューへ戻る（ゲーム中・結果画面のどちらでも有効）。
             document.addEventListener("keydown", (e) => {
