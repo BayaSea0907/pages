@@ -23,6 +23,15 @@
                 cursor: pointer;
                 margin-top: 16px;
             }
+            /* メニュー・プレイ・結果の各状態をキャンバスと同じ高さで縦中央揃えにする。
+               スタートボタンを押したとき、指の位置がゲーム画面の中央付近と一致する。 */
+            .game-state {
+                height: 400px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
             /* メニューの各設定行 */
             .menu__option {
                 margin: 16px 0;
@@ -99,7 +108,7 @@
         <h1>🎯クリックゲーム</h1>
 
         <!-- state: menu -->
-        <div id="state-menu">
+        <div id="state-menu" class="game-state">
             <p>
                 画面に次々と現れるボールをすばやくクリックしよう！<br>
                 制限時間は <strong>10秒</strong>、登場するボールは最大 <strong>30個</strong>。<br>
@@ -142,7 +151,7 @@
         </div>
 
         <!-- state: result -->
-        <div id="state-result" style="display:none;">
+        <div id="state-result" class="game-state" style="display:none;">
             <p class="result__subtitle">あなたの反射神経レベルは...</p>
             <p class="result__rank-letter" id="rank-display"></p>
             <p class="result__description" id="rank-description"></p>
