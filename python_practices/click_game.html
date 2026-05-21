@@ -61,6 +61,38 @@
                 color: white;
                 border-color: #C0392B;
             }
+            /* 3番: "あなたの反射神経レベルは..." */
+            .result__subtitle {
+                font-size: 1.1em;
+                font-weight: bold;
+                color: #555;
+                margin: 4px 0 12px;
+            }
+            /* 2番: ランク文字 */
+            .result__rank-letter {
+                font-size: 3.2em;
+                font-weight: bold;
+                margin: 8px 0;
+            }
+            /* 5番: description（最小） */
+            .result__description {
+                font-size: 0.9em;
+                color: #666;
+                margin: 4px 0;
+            }
+            /* ランク一覧テーブル */
+            .result__rank-table {
+                margin: 8px auto 16px;
+                border-collapse: collapse;
+            }
+            .result__rank-table td {
+                padding: 6px 20px;
+            }
+            /* 現在のランク行を強調 */
+            .result__rank-table tr.is-current td {
+                font-weight: bold;
+                color: #E74C3C;
+            }
         </style>
     </head>
     <body>
@@ -111,9 +143,11 @@
 
         <!-- state: result -->
         <div id="state-result" style="display:none;">
-            <h2>結果</h2>
+            <p class="result__subtitle">あなたの反射神経レベルは...</p>
+            <p class="result__rank-letter" id="rank-display"></p>
+            <p class="result__description" id="rank-description"></p>
             <p id="score-display"></p>
-            <p id="score-message"></p>
+            <table id="rank-table" class="result__rank-table"></table>
             <button id="retry-btn" class="action-btn">もう一度</button>
         </div>
 
@@ -131,6 +165,26 @@
                 CANVAS_WIDTH:  600, // canvas の横幅（上の width 属性と合わせる）
                 CANVAS_HEIGHT: 400, // canvas の縦幅（上の height 属性と合わせる）
             };
+
+            // 円サイズ（半径）から難易度情報へのマッピング。
+            // multiplier はスコアに掛ける係数で、難しいLvほど大きい。
+            const LV_TABLE = {
+                45:   { lv: 1, multiplier: 1.0 },
+                37.5: { lv: 2, multiplier: 1.2 },
+                25:   { lv: 3, multiplier: 1.5 },
+                12.5: { lv: 4, multiplier: 2.0 },
+                5:    { lv: 5, multiplier: 3.0 },
+            };
+
+            // 調整スコア（クリック数×倍率）に応じたランク定義。
+            // min が高い順に並べ、最初にマッチしたランクを採用する。
+            const RANK_TABLE = [
+                { rank: "SS", threshold: "27点以上", min: 27, label: "プロゲーマーレベル", description: "猫と張り合える"                   },
+                { rank: "S",  threshold: "21点以上", min: 21, label: "ゲームランカー勢",   description: "ジャンケンで負けない"              },
+                { rank: "A",  threshold: "15点以上", min: 15, label: "ゲーム上手い勢",     description: "蚊を仕留めるのはお手のもの"        },
+                { rank: "B",  threshold: "9点以上",  min: 9,  label: "ゲームカジュアル勢", description: "可もなく不可もなく普通です"         },
+                { rank: "C",  threshold: "9点未満",  min: 0,  label: "ゲームやらない勢",   description: "今すぐ免許返納したほうが良さそう"   },
+            ];
 
             // ==============================
             // DOM 参照
@@ -279,18 +333,29 @@
                 cancelAnimationFrame(gameLoopId);
                 gameLoopId = null; // ESC 判定の誤作動を防ぐためリセット
 
-                // スコアに応じた評価メッセージを決める。
-                let message;
-                if      (score >= CONFIG.MAX_TOTAL) message = "全部クリック！完璧だ！🏆";
-                else if (score >= 20)               message = "すごい！神業だ！";
-                else if (score >= 12)               message = "なかなか速い！";
-                else if (score >= 6)                message = "まずまずですね。";
-                else                                message = "もう少し頑張りましょう！";
+                // 選択中の Lv から倍率を取得し、調整スコアを算出する。
+                const lvInfo   = LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
+                const adjScore = Math.round(score * lvInfo.multiplier);
+                // RANK_TABLE は min の高い順なので、最初にマッチしたものが正しいランク。
+                const rankEntry = RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1];
 
-                // 結果画面の要素にスコアと評価を書き込む。
+                // ランク文字を表示（Sランクのみ金色、それ以外は赤）。
+                const rankEl = document.getElementById("rank-display");
+                rankEl.textContent = rankEntry.rank;
+                rankEl.style.color = rankEntry.rank === "SS" ? "#FFD700" : "#E74C3C";
+
+                document.getElementById("rank-description").textContent = rankEntry.description;
                 document.getElementById("score-display").textContent =
-                    score + " / " + CONFIG.MAX_TOTAL + " 個クリック！";
-                document.getElementById("score-message").textContent = message;
+                    score + " / " + CONFIG.MAX_TOTAL + " 個クリック（Lv" + lvInfo.lv + "）";
+
+                // ランク一覧を動的に生成し、自分のランクを強調表示する。
+                document.getElementById("rank-table").innerHTML = RANK_TABLE.map(r =>
+                    `<tr class="${r.rank === rankEntry.rank ? "is-current" : ""}">
+                        <td>${r.rank}</td>
+                        <td>${r.label}</td>
+                        <td>${r.rank === rankEntry.rank ? "← あなた" : ""}</td>
+                    </tr>`
+                ).join("");
 
                 switchState("state-playing", "state-result");
             }
