@@ -23,7 +23,7 @@
                     gap: 16px;
                 }
                 /* メニューの説明文をスマホ向けに小さくして改行を減らす */
-                #state-menu p {
+                .menu p {
                     font-size: 0.85em;
                 }
                 /* ランク一覧をスマホ向けに縮小して表示崩れを防ぐ */
@@ -37,7 +37,8 @@
                 /* PC の flex 中央揃えレイアウトをブロックに戻す。
                    switchState() が display:block を上書きするため、
                    初回表示と遷移後で挙動を揃えるために明示的に block を指定する。 */
-                .game-state {
+                .menu,
+                .result {
                     height: auto;
                     display: block;
                 }
@@ -48,22 +49,32 @@
                 max-width: 100%;
                 height: auto;
             }
+            /* メニュー・結果の各状態をキャンバスと同じ高さで縦中央揃えにする。
+               スタートボタンを押したとき、指の位置がゲーム画面の中央付近と一致する。 */
+            .menu,
+            .result {
+                height: 400px;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }
             /* ゲームプレイ中はcanvasを画面中央に配置する */
-            #state-playing {
+            .playing {
                 min-height: 100dvh;
                 display: flex;
                 justify-content: center;
                 align-items: center;
             }
             /* canvas とリンクをまとめる縦並びコンテナ */
-            .playing-wrapper {
+            .playing__wrapper {
                 display: flex;
                 flex-direction: column;
                 align-items: stretch;
                 max-width: 100%;
             }
             /* 「タイトルに戻る」リンク */
-            .back-link {
+            .playing__back-link {
                 display: block;
                 text-align: right;
                 padding: 0 0 4px;
@@ -71,23 +82,7 @@
                 color: #aaa;
                 text-decoration: none;
             }
-            .back-link:hover { color: #777; }
-            /* スタート・リトライボタン */
-            .action-btn {
-                padding: 12px 28px;
-                font-size: 1.1em;
-                cursor: pointer;
-                margin-top: 16px;
-            }
-            /* メニュー・プレイ・結果の各状態をキャンバスと同じ高さで縦中央揃えにする。
-               スタートボタンを押したとき、指の位置がゲーム画面の中央付近と一致する。 */
-            .game-state {
-                height: 400px;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-            }
+            .playing__back-link:hover { color: #777; }
             /* メニューの各設定行 */
             .menu__option {
                 margin: 16px 0;
@@ -103,6 +98,14 @@
                 justify-content: center;
                 gap: 8px;
                 flex-wrap: wrap; /* 画面が狭いとき折り返す */
+            }
+            /* スタート・リトライボタン */
+            .menu__start,
+            .result__retry {
+                padding: 12px 28px;
+                font-size: 1.1em;
+                cursor: pointer;
+                margin-top: 16px;
             }
             /* 選択ボタン（基本） */
             .opt-btn {
@@ -134,17 +137,20 @@
                 margin: 4px 0 12px;
             }
             /* ランク文字 */
-            .result__rank-letter {
+            .result__rank {
                 font-size: 3.2em;
                 font-weight: bold;
                 margin: 8px 0;
             }
             /* description（最小） */
-            .result__description {
+            .result__desc {
                 font-size: 0.9em;
                 color: #666;
                 margin: 4px 0;
             }
+            /* スコア表示 */
+            .result__score,
+            .result__adj-score { font-weight: bold; font-size: 14px; }
             /* ランク一覧テーブル */
             .result__rank-table {
                 margin: 8px auto 16px;
@@ -153,7 +159,6 @@
             .result__rank-table td {
                 padding: 6px 20px;
             }
-            #score-display, #adj-score-display { font-weight: bold; font-size: 14px; }
             /* 現在のランク行を強調 */
             .result__rank-table tr.is-current td {
                 font-weight: bold;
@@ -165,7 +170,7 @@
         <h1>🎯クリックゲーム</h1>
 
         <!-- state: menu -->
-        <div id="state-menu" class="game-state">
+        <div class="menu">
             <p>
                 画面に次々と現れるボールをクリックしよう！<br>
                 制限時間は <strong>10秒</strong>、登場するボールは最大 <strong>30個</strong>。<br>
@@ -199,27 +204,26 @@
                 </div>
             </div>
 
-            <button id="start-btn" class="action-btn">スタート</button>
+            <button class="menu__start">スタート</button>
         </div>
 
         <!-- state: playing -->
-        <div id="state-playing" style="display:none;">
-            <div class="playing-wrapper">
-                <a href="#" id="back-to-menu-link" class="back-link">タイトルに戻る</a>
-                <canvas id="game-canvas" width="600" height="400"></canvas>
+        <div class="playing" style="display:none;">
+            <div class="playing__wrapper">
+                <a href="#" class="playing__back-link">タイトルに戻る</a>
+                <canvas class="playing__canvas" width="600" height="400"></canvas>
             </div>
         </div>
 
         <!-- state: result -->
-        <div id="state-result" class="game-state" style="display:none;">
-            <p id="score-display"></p>
-            <p id="adj-score-display"></p>
-            <p id="lv-info-display"></p>
+        <div class="result" style="display:none;">
+            <p class="result__score"></p>
+            <p class="result__adj-score"></p>
             <p class="result__subtitle">あなたの反射神経レベルは...</p>
-            <p class="result__rank-letter" id="rank-display"></p>
-            <p class="result__description" id="rank-description"></p>
-            <table id="rank-table" class="result__rank-table"></table>
-            <button id="retry-btn" class="action-btn">もう一度</button>
+            <p class="result__rank"></p>
+            <p class="result__desc"></p>
+            <table class="result__rank-table"></table>
+            <button class="result__retry">もう一度</button>
         </div>
 
         <script>
@@ -254,13 +258,13 @@
                 { rank: "S",  threshold: "21~26", min: 21, label: "ゲームランカー勢",   description: "ジャンケン絶対に勝てそう..."              },
                 { rank: "A",  threshold: "15~20", min: 15, label: "ゲーム上手い勢",     description: "蚊を仕留めるのはお手のもの..."        },
                 { rank: "B",  threshold: "9~14",  min: 9,  label: "ゲームカジュアル勢", description: "可もなく不可もなく普通です..."         },
-                { rank: "C",  threshold: "0~8",   min: 0,  label: "ドパガキ",   description: "運転免許を持ってたら返納してください..."   },
+                { rank: "C",  threshold: "0~8",   min: 0,  label: "ドパガキ",           description: "運転免許を持ってたら返納してください..."   },
             ];
 
             // ==============================
             // DOM 参照
             // ==============================
-            const canvas = document.getElementById("game-canvas");
+            const canvas = document.querySelector(".playing__canvas");
             // getContext("2d") で「2D描画用の道具箱（ctx）」を取得する。
             // この ctx を通じて図形・色・テキストを canvas に描く。
             // 3d, webglなどがある。
@@ -270,8 +274,8 @@
             // 表示/非表示状態切り替え
             // ==============================
             function switchState(from, to) {
-                document.getElementById(from).style.display = "none";
-                document.getElementById(to).style.display = "block";
+                document.querySelector("." + from).style.display = "none";
+                document.querySelector("." + to).style.display = "block";
             }
 
             // ==============================
@@ -295,16 +299,16 @@
             let circles = [];
 
             // クリック成功数（スコア）。
-            let score = 0.0;
+            let score = 0;
 
             // ゲーム開始からこれまでに登場したボールの累計数。
             // MAX_TOTAL に達したら新しいボールを出さない。
             let totalSpawned = 0;
 
             // タイマー管理。
-            let timeLeft    = CONFIG.GAME_DURATION; // 残り秒数（draw() で参照する）
-            let startTime   = null;                 // ゲーム開始時の timestamp
-            let gameLoopId = null;                 // requestAnimationFrame の戻り値（キャンセルに使う）
+            let timeLeft   = CONFIG.GAME_DURATION; // 残り秒数（draw() で参照する）
+            let startTime  = null;                  // ゲーム開始時の timestamp
+            let gameLoopId = null;                  // requestAnimationFrame の戻り値（キャンセルに使う）
 
             // 現在のスコアから即座にランク文字を返すヘルパー。
             function getCurrentRank() {
@@ -401,9 +405,9 @@
                 }
 
                 document.querySelector("h1").style.display = "none";
-                switchState("state-menu", "state-playing");
+                switchState("menu", "playing");
                 // switchState が block を上書きするため flex に再設定してキャンバスを中央に保つ。
-                document.getElementById("state-playing").style.display = "flex";
+                document.querySelector(".playing").style.display = "flex";
                 // draw() を直接呼ぶ代わりに gameLoop を起動する。
                 // 以降は gameLoop が毎フレーム draw() を呼び続ける。
                 gameLoopId = requestAnimationFrame(gameLoop);
@@ -424,19 +428,19 @@
                 // RANK_TABLE は min の高い順なので、最初にマッチしたものが正しいランク。
                 const rankEntry = RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1];
 
-                // ランク文字を表示（Sランクのみ金色、それ以外は赤）。
-                const rankEl = document.getElementById("rank-display");
+                // ランク文字を表示（SSランクのみ金色、それ以外は赤）。
+                const rankEl = document.querySelector(".result__rank");
                 rankEl.textContent = rankEntry.rank;
                 rankEl.style.color = rankEntry.rank === "SS" ? "#FFD700" : "#E74C3C";
 
-                document.getElementById("rank-description").textContent = rankEntry.description;
-                document.getElementById("score-display").textContent =
+                document.querySelector(".result__desc").textContent = rankEntry.description;
+                document.querySelector(".result__score").textContent =
                     score + " / " + CONFIG.MAX_TOTAL + " 個クリック（Lv" + lvInfo.lv + "）";
-                document.getElementById("adj-score-display").textContent =
+                document.querySelector(".result__adj-score").textContent =
                     "スコア: " + adjScore + " 点（倍率: ×" + lvInfo.multiplier.toFixed(1) + "）";
 
                 // ランク一覧を動的に生成し、自分のランクを強調表示する。
-                document.getElementById("rank-table").innerHTML = RANK_TABLE.map(r =>
+                document.querySelector(".result__rank-table").innerHTML = RANK_TABLE.map(r =>
                     `<tr class="${r.rank === rankEntry.rank ? "is-current" : ""}">
                         <td>${r.rank}（${r.threshold}）</td>
                         <td>${r.label}</td>
@@ -445,7 +449,7 @@
                 ).join("");
 
                 document.querySelector("h1").style.display = "";
-                switchState("state-playing", "state-result");
+                switchState("playing", "result");
             }
 
             // ==============================
@@ -498,15 +502,15 @@
                 if (gameLoopId !== null) {
                     cancelAnimationFrame(gameLoopId);
                     gameLoopId = null;
-                    switchState("state-playing", "state-menu");
+                    switchState("playing", "menu");
                 } else {
-                    switchState("state-result", "state-menu");
+                    switchState("result", "menu");
                 }
             }
 
-            document.getElementById("start-btn").addEventListener("click", startGame);
-            document.getElementById("retry-btn").addEventListener("click", returnToMenu);
-            document.getElementById("back-to-menu-link").addEventListener("click", (e) => {
+            document.querySelector(".menu__start").addEventListener("click", startGame);
+            document.querySelector(".result__retry").addEventListener("click", returnToMenu);
+            document.querySelector(".playing__back-link").addEventListener("click", (e) => {
                 e.preventDefault();
                 returnToMenu();
             });
@@ -514,7 +518,7 @@
             // Esc キーでメニューへ戻る（ゲーム中・結果画面のどちらでも有効）。
             document.addEventListener("keydown", (e) => {
                 if (e.key !== "Escape") return;
-                const onResult = document.getElementById("state-result").style.display === "block";
+                const onResult = document.querySelector(".result").style.display === "block";
                 if (gameLoopId !== null || onResult) {
                     returnToMenu();
                 }
