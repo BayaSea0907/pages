@@ -232,6 +232,13 @@
             let startTime   = null;                 // ゲーム開始時の timestamp
             let gameLoopId = null;                 // requestAnimationFrame の戻り値（キャンセルに使う）
 
+            // 現在のスコアから即座にランク文字を返すヘルパー。
+            function getCurrentRank() {
+                const lvInfo   = LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
+                const adjScore = Math.round(score * lvInfo.multiplier);
+                return (RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1]).rank;
+            }
+
             // ==============================
             // 描画
             // 状態が変わるたびに呼び出して「上書き再描画」する。
@@ -260,11 +267,11 @@
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
 
-                // スコアを canvas の左上に n/30 形式で表示する。
+                // スコアを canvas の左上に n/30 形式で、その右に現在ランクを表示する。
                 ctx.fillStyle = "white";
                 ctx.font      = "bold 22px sans-serif";
                 ctx.textAlign = "left";
-                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL, 16, 36);
+                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL + "   " + getCurrentRank(), 16, 36);
 
                 // タイマーを canvas の右上に表示する。
                 // toFixed(1) で小数点1桁に丸める（例: 7.3）。
