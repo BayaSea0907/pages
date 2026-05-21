@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html lang="ja">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width,initial-scale=1" />
+        <title>クリックゲーム</title>
+        <style>
+            body {
+                font-family: sans-serif;
+                text-align: center;
+            }
+            canvas {
+                display: block;
+                margin: 0 auto;
+            }
+            /* スタート・リトライボタン */
+            #start-btn, #retry-btn {
+                padding: 12px 28px;
+                font-size: 1.1em;
+                cursor: pointer;
+                margin-top: 16px;
+            }
+            /* メニューの各設定行 */
+            .menu-option {
+                margin: 16px 0;
+            }
+            .menu-option label {
+                display: block;
+                margin-bottom: 8px;
+                font-weight: bold;
+            }
+            /* 選択ボタンのグループ */
+            .btn-group {
+                display: flex;
+                justify-content: center;
+                gap: 8px;
+            }
+            .opt-btn {
+                padding: 8px 20px;
+                font-size: 1em;
+                cursor: pointer;
+                border: 2px solid #ccc;
+                background: white;
+                border-radius: 6px;
+            }
+            /* 選択中のボタン */
+            .opt-btn.active {
+                background: #E74C3C;
+                color: white;
+                border-color: #C0392B;
+            }
+        </style>
+    </head>
+    <body>
+        <h1>🎯クリックゲーム</h1>
+
+        <!-- state: menu -->
+        <div id="state-menu">
+            <p>
+                画面に次々と現れるボールをすばやくクリックしよう！<br>
+                制限時間は <strong>10秒</strong>、登場するボールは最大 <strong>30個</strong>。<br>
+                全部クリックできれば完璧スコア達成だ！反射神経が試されるぞ！
+            </p>
+
+            <div class="menu-option">
+                <label>ボールのサイズ</label>
+                <!-- data-value に半径（px）を持たせ、JS で読み取る -->
+                <div class="btn-group">
+                    <button class="opt-btn size-btn" data-value="25">小</button>
+                    <button class="opt-btn size-btn active" data-value="40">中</button>
+                    <button class="opt-btn size-btn" data-value="60">大</button>
+                </div>
+            </div>
+
+            <div class="menu-option">
+                <label>同時に出現するボールの数</label>
+                <div class="btn-group">
+                    <button class="opt-btn count-btn active" data-value="1">1</button>
+                    <button class="opt-btn count-btn" data-value="2">2</button>
+                    <button class="opt-btn count-btn" data-value="3">3</button>
+                    <button class="opt-btn count-btn" data-value="4">4</button>
+                    <button class="opt-btn count-btn" data-value="5">5</button>
+                </div>
+            </div>
+
+            <button id="start-btn">スタート</button>
+        </div>
+
+        <!-- state: playing -->
+        <div id="state-playing" style="display:none;">
+            <canvas id="game-canvas" width="600" height="400"></canvas>
+        </div>
+
+        <!-- state: result -->
+        <div id="state-result" style="display:none;">
+            <h2>結果</h2>
+            <p id="score-display"></p>
+            <p id="score-message"></p>
+            <button id="retry-btn">もう一度</button>
+        </div>
+
+        <script>
+            // ==============================
+            // 設定変数
+            // ここの値を変えるだけでゲームの挙動を調整できる。
+            // Python でいう定数辞書 CONFIG = {...} と同じ感覚。
+            // ==============================
+            const CONFIG = {
+                GAME_DURATION:  10, // ゲーム時間（秒）
+                MAX_TOTAL:      30, // 1ゲームで登場するボールの最大数
+                CIRCLE_COUNT:   1,  // 同時に表示する円の数（1〜5）
+                CIRCLE_RADIUS:  40, // 円の半径（px）
+                CANVAS_WIDTH:  600, // canvas の横幅（上の width 属性と合わせる）
+                CANVAS_HEIGHT: 400, // canvas の縦幅（上の height 属性と合わせる）
+            };
+
+            // ==============================
+            // DOM 参照
+            // ==============================
+            const canvas = document.getElementById("game-canvas");
+            // getContext("2d") で「2D描画用の道具箱（ctx）」を取得する。
+            // この ctx を通じて図形・色・テキストを canvas に描く。
+            // 3d, webglなどがある。
+            const ctx = canvas.getContext("2d");
+
+            // ==============================
+            // 表示/非表示状態切り替え
+            // ==============================
+            function switchState(from, to) {
+                document.getElementById(from).style.display = "none";
+                document.getElementById(to).style.display = "block";
+            }
+
+            // ==============================
+            // 円の生成
+            // ==============================
+            function spawnCircle() {
+                const r = CONFIG.CIRCLE_RADIUS;
+                return {
+                    // 中心座標（cx, cy）を radius 分だけ内側の範囲でランダムに決める。
+                    // r〜(CANVAS_WIDTH - r) の範囲にすることで円がはみ出さない。
+                    cx:     r + Math.random() * (CONFIG.CANVAS_WIDTH  - r * 2),
+                    cy:     r + Math.random() * (CONFIG.CANVAS_HEIGHT - r * 2),
+                    radius: r,
+                };
+            }
+
+            // 画面上に表示中の円を入れておく配列。
+            let circles = [];
+
+            // クリック成功数（スコア）。
+            let score = 0;
+
+            // ゲーム開始からこれまでに登場したボールの累計数。
+            // MAX_TOTAL に達したら新しいボールを出さない。
+            let totalSpawned = 0;
+
+            // タイマー管理。
+            let timeLeft    = CONFIG.GAME_DURATION; // 残り秒数（draw() で参照する）
+            let startTime   = null;                 // ゲーム開始時の timestamp
+            let animFrameId = null;                 // requestAnimationFrame の戻り値（キャンセルに使う）
+
+            // ==============================
+            // 描画
+            // 状態が変わるたびに呼び出して「上書き再描画」する。
+            // ==============================
+            function draw() {
+                // まず背景色で canvas 全体を塗りつぶして前のフレームを消す。
+                ctx.fillStyle = "#1a1a2e";
+                ctx.fillRect(0, 0, CONFIG.CANVAS_WIDTH, CONFIG.CANVAS_HEIGHT);
+
+                // 円を1つずつ描画する。
+                // 影と色はすべての円で共通なのでループの前に1回だけ設定する。
+                // shadowColor/shadowBlur を設定すると fill() に影が落ちる。
+                ctx.shadowColor   = "rgba(0, 0, 0, 0.55)";
+                ctx.shadowBlur    = 10;
+                ctx.shadowOffsetX = 3;
+                ctx.shadowOffsetY = 3;
+                ctx.fillStyle     = "#E74C3C";
+                for (const c of circles) {
+                    ctx.beginPath();
+                    ctx.arc(c.cx, c.cy, c.radius, 0, Math.PI * 2);
+                    ctx.fill();
+                }
+                // HUD の描画に影が残らないようリセット。
+                ctx.shadowColor   = "transparent";
+                ctx.shadowBlur    = 0;
+                ctx.shadowOffsetX = 0;
+                ctx.shadowOffsetY = 0;
+
+                // スコアを canvas の左上に n/30 形式で表示する。
+                ctx.fillStyle = "white";
+                ctx.font      = "bold 22px sans-serif";
+                ctx.textAlign = "left";
+                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL, 16, 36);
+
+                // タイマーを canvas の右上に表示する。
+                // toFixed(1) で小数点1桁に丸める（例: 7.3）。
+                // Math.max(0, timeLeft) で 0 未満にならないようにする。
+                const displayTime = Math.max(0, timeLeft).toFixed(1);
+                // 残り時間に応じて色を変える（5秒以下でオレンジ、2秒以下で赤）。
+                ctx.fillStyle = timeLeft <= 2 ? "#FF4444" : timeLeft <= 5 ? "#FFA500" : "white";
+                ctx.font      = "bold 28px monospace";
+                ctx.textAlign = "right"; // テキストの基準点を右端に設定
+                ctx.fillText(displayTime + "秒", CONFIG.CANVAS_WIDTH - 16, 36);
+            }
+
+            // ==============================
+            // ゲームループ
+            // requestAnimationFrame でブラウザの描画タイミング（約60fps）に合わせて
+            // 毎フレーム呼び出される。ゲームが動いている間ずっと回り続ける。
+            // ==============================
+            function gameLoop() {
+                // performance.now() はページ読み込みからの経過ミリ秒を返す。
+                // /1000 で秒に変換し、ゲーム開始時刻との差を残り時間から引く。
+                const elapsed = (performance.now() - startTime) / 1000;
+                timeLeft = CONFIG.GAME_DURATION - elapsed;
+
+                // 時間切れならゲーム終了へ。
+                if (timeLeft <= 0) {
+                    endGame();
+                    return; // ここで関数を抜けてループを止める
+                }
+
+                draw();
+
+                // 次のフレームで再び gameLoop を呼ぶよう予約する。
+                // 戻り値を animFrameId に保存しておくと、後でキャンセルできる。
+                animFrameId = requestAnimationFrame(gameLoop);
+            }
+
+            // ==============================
+            // ゲーム開始
+            // ==============================
+            function startGame() {
+                circles      = []; // 前回の円をリセット
+                score        = 0;  // スコアをリセット
+                totalSpawned = 0;  // 登場数をリセット
+                startTime    = performance.now(); // 開始時刻を記録
+
+                // CIRCLE_COUNT を 1〜5 の範囲に収める。
+                // Math.max で下限1、Math.min で上限5を保証する。
+                const count = Math.min(Math.max(CONFIG.CIRCLE_COUNT, 1), 5);
+                for (let i = 0; i < count; i++) {
+                    circles.push(spawnCircle());
+                    totalSpawned++;
+                }
+
+                switchState("state-menu", "state-playing");
+                // draw() を直接呼ぶ代わりに gameLoop を起動する。
+                // 以降は gameLoop が毎フレーム draw() を呼び続ける。
+                animFrameId = requestAnimationFrame(gameLoop);
+            }
+
+            // ==============================
+            // ゲーム終了
+            // ==============================
+            function endGame() {
+                // ループを止める。cancelAnimationFrame に animFrameId を渡すと
+                // 予約済みの次フレーム呼び出しをキャンセルできる。
+                cancelAnimationFrame(animFrameId);
+
+                // スコアに応じた評価メッセージを決める。
+                let message;
+                if      (score >= CONFIG.MAX_TOTAL) message = "全部クリック！完璧だ！🏆";
+                else if (score >= 20)               message = "すごい！神業だ！";
+                else if (score >= 12)               message = "なかなか速い！";
+                else if (score >= 6)                message = "まずまずですね。";
+                else                                message = "もう少し頑張りましょう！";
+
+                // 結果画面の要素にスコアと評価を書き込む。
+                document.getElementById("score-display").textContent =
+                    score + " / " + CONFIG.MAX_TOTAL + " 個クリック！";
+                document.getElementById("score-message").textContent = message;
+
+                switchState("state-playing", "state-result");
+            }
+
+            // ==============================
+            // クリック判定
+            // canvas 全体にクリックイベントを1つ登録し、
+            // クリック位置がどの円の内側かをループで調べる。
+            // ==============================
+            canvas.addEventListener("click", (e) => {
+                // getBoundingClientRect() で画面上の canvas の位置とサイズを取得する。
+                const canvasRect = canvas.getBoundingClientRect();
+
+                const x = e.clientX - canvasRect.left;
+                const y = e.clientY - canvasRect.top;
+
+                for (let i = 0; i < circles.length; i++) {
+                    const c = circles[i];
+                    // 円の当たり判定: クリック座標と円の中心との距離が半径以内かを調べる。
+                    // 距離 = √(dx² + dy²) だが、√の計算を省くために両辺を2乗して比較する。
+                    const dx = x - c.cx;
+                    const dy = y - c.cy;
+                    if (dx * dx + dy * dy <= c.radius * c.radius) {
+                        circles.splice(i, 1);
+                        score++;
+                        // まだ登場できるボールが残っている場合だけ新しく出す。
+                        if (totalSpawned < CONFIG.MAX_TOTAL) {
+                            circles.push(spawnCircle());
+                            totalSpawned++;
+                        }
+                        break;
+                    }
+                }
+            });
+
+            // ==============================
+            // イベントリスナー
+            // ボタンがクリックされたときに呼び出す関数を登録する。
+            // ==============================
+            document.getElementById("start-btn").addEventListener("click", startGame);
+            document.getElementById("retry-btn").addEventListener("click", () => {
+                switchState("state-result", "state-menu");
+            });
+
+            // ボタングループの active 切り替えと CONFIG 更新をまとめたヘルパー関数。
+            // selector: 対象ボタンの CSS セレクタ、configKey: 更新する CONFIG のキー名。
+            // CONFIG[configKey] はブラケット記法で、変数でキーを指定してアクセスする。
+            // Python でいう config[key] と同じ。
+            function setupOptionBtns(selector, configKey) {
+                document.querySelectorAll(selector).forEach(btn => {
+                    btn.addEventListener("click", () => {
+                        document.querySelectorAll(selector).forEach(b => b.classList.remove("active"));
+                        btn.classList.add("active");
+                        // dataset.value は HTML の data-value 属性の値（文字列）。
+                        CONFIG[configKey] = parseInt(btn.dataset.value);
+                    });
+                });
+            }
+
+            setupOptionBtns(".size-btn",  "CIRCLE_RADIUS");
+            setupOptionBtns(".count-btn", "CIRCLE_COUNT");
+        </script>
+    </body>
+</html>
