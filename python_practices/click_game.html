@@ -395,6 +395,11 @@
                     if (dx * dx + dy * dy <= c.radius * c.radius) {
                         circles.splice(i, 1);
                         score++;
+                        // 全30個クリックしたらゲームクリアとして即終了。
+                        if (score >= CONFIG.MAX_TOTAL) {
+                            endGame();
+                            return;
+                        }
                         // まだ登場できるボールが残っている場合だけ新しく出す。
                         if (totalSpawned < CONFIG.MAX_TOTAL) {
                             circles.push(spawnCircle());
