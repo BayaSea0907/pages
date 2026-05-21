@@ -20,14 +20,32 @@
                     margin: 0;
                     padding: 16px 0;
                     box-sizing: border-box;
+                    gap: 16px;
+                }
+                /* メニューの説明文をスマホ向けに小さくして改行を減らす */
+                #state-menu p {
+                    font-size: 0.85em;
+                }
+                /* PC の flex 中央揃えレイアウトをブロックに戻す。
+                   switchState() が display:block を上書きするため、
+                   初回表示と遷移後で挙動を揃えるために明示的に block を指定する。 */
+                .game-state {
+                    height: auto;
+                    display: block;
                 }
             }
             canvas {
                 display: block;
-                margin: 0 auto;
                 /* 画面幅より広い場合は縮小し、縦横比を保って高さも追従させる */
                 max-width: 100%;
                 height: auto;
+            }
+            /* ゲームプレイ中はcanvasを画面中央に配置する */
+            #state-playing {
+                min-height: 100dvh;
+                display: flex;
+                justify-content: center;
+                align-items: center;
             }
             /* スタート・リトライボタン */
             .action-btn {
@@ -123,7 +141,7 @@
         <!-- state: menu -->
         <div id="state-menu" class="game-state">
             <p>
-                画面に次々と現れるボールをすばやくクリックしよう！<br>
+                画面に次々と現れるボールをクリックしよう！<br>
                 制限時間は <strong>10秒</strong>、登場するボールは最大 <strong>30個</strong>。<br>
                 全部クリックできれば完璧スコア達成だ！反射神経が試されるぞ！
             </p>
@@ -351,7 +369,10 @@
                     totalSpawned++;
                 }
 
+                document.querySelector("h1").style.display = "none";
                 switchState("state-menu", "state-playing");
+                // switchState が block を上書きするため flex に再設定してキャンバスを中央に保つ。
+                document.getElementById("state-playing").style.display = "flex";
                 // draw() を直接呼ぶ代わりに gameLoop を起動する。
                 // 以降は gameLoop が毎フレーム draw() を呼び続ける。
                 gameLoopId = requestAnimationFrame(gameLoop);
@@ -390,6 +411,7 @@
                     </tr>`
                 ).join("");
 
+                document.querySelector("h1").style.display = "";
                 switchState("state-playing", "state-result");
             }
 
@@ -439,6 +461,7 @@
             // ==============================
             // ゲーム中・結果画面のどちらからでもメニューへ戻る共通処理。
             function returnToMenu() {
+                document.querySelector("h1").style.display = "";
                 if (gameLoopId !== null) {
                     cancelAnimationFrame(gameLoopId);
                     gameLoopId = null;
