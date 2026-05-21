@@ -136,11 +136,11 @@
                     mm換算は 96dpi 基準（1px ≈ 0.26mm）のおおよその値。
                 -->
                 <div class="menu__btn-group">
-                    <button class="opt-btn opt-btn--size opt-btn--active" data-value="45">Lv1<small class="opt-btn__sub">(約24mm, 90px)</small></button>
+                    <button class="opt-btn opt-btn--size opt-btn--active" data-value="42.5">Lv1<small class="opt-btn__sub">(約22mm, 85px)</small></button>
                     <button class="opt-btn opt-btn--size" data-value="37.5">Lv2<small class="opt-btn__sub">(約20mm, 75px)</small></button>
                     <button class="opt-btn opt-btn--size" data-value="25">Lv3<small class="opt-btn__sub">(約13mm, 50px)</small></button>
                     <button class="opt-btn opt-btn--size" data-value="12.5">Lv4<small class="opt-btn__sub">(約7mm, 25px)</small></button>
-                    <button class="opt-btn opt-btn--size" data-value="5">Lv5<small class="opt-btn__sub">(約3mm, 10px)</small></button>
+                    <button class="opt-btn opt-btn--size" data-value="7.5">Lv5<small class="opt-btn__sub">(約4mm, 15px)</small></button>
                 </div>
             </div>
 
@@ -183,7 +183,7 @@
                 GAME_DURATION:  10, // ゲーム時間（秒）
                 MAX_TOTAL:      30, // 1ゲームで登場するボールの最大数
                 CIRCLE_COUNT:   1,  // 同時に表示する円の数（1〜5）
-                CIRCLE_RADIUS:  45, // 円の半径（px）← 直径90px（Lv1）がデフォルト
+                CIRCLE_RADIUS:  42.5, // 円の半径（px）← 直径85px（Lv1）がデフォルト
                 CANVAS_WIDTH:  600, // canvas の横幅（上の width 属性と合わせる）
                 CANVAS_HEIGHT: 400, // canvas の縦幅（上の height 属性と合わせる）
             };
@@ -191,11 +191,11 @@
             // 円サイズ（半径）から難易度情報へのマッピング。
             // multiplier はスコアに掛ける係数で、難しいLvほど大きい。
             const LV_TABLE = {
-                45:   { lv: 1, multiplier: 1.0 },
+                42.5: { lv: 1, multiplier: 1.0 },
                 37.5: { lv: 2, multiplier: 1.2 },
                 25:   { lv: 3, multiplier: 1.5 },
                 12.5: { lv: 4, multiplier: 2.0 },
-                5:    { lv: 5, multiplier: 3.0 },
+                7.5:  { lv: 5, multiplier: 3.0 },
             };
 
             // 調整スコア（クリック数×倍率）に応じたランク定義。
