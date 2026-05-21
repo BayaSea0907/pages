@@ -3,3 +3,7 @@
 ### 秒数当てゲーム
 
 - https://bayasea0907.github.io/pages/python_practices/time_game.html
+
+### クリックゲーム
+
+- https://bayasea0907.github.io/pages/python_practices/click_game.html
