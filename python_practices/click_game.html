@@ -148,9 +148,9 @@
                 color: #666;
                 margin: 4px 0;
             }
-            /* スコア表示 */
-            .result__score,
-            .result__adj-score { font-weight: bold; font-size: 14px; }
+            /* クリック数・スコア表示 */
+            .result__clicks,
+            .result__score { font-weight: bold; font-size: 14px; }
             /* ランク一覧テーブル */
             .result__rank-table {
                 margin: 8px auto 16px;
@@ -185,11 +185,11 @@
                     mm換算は 96dpi 基準（1px ≈ 0.26mm）のおおよその値。
                 -->
                 <div class="menu__btn-group">
-                    <button class="opt-btn opt-btn--size opt-btn--active" data-value="42.5">Lv1<small class="opt-btn__sub">(約22mm, 85px)</small></button>
-                    <button class="opt-btn opt-btn--size" data-value="37.5">Lv2<small class="opt-btn__sub">(約20mm, 75px)</small></button>
-                    <button class="opt-btn opt-btn--size" data-value="25">Lv3<small class="opt-btn__sub">(約13mm, 50px)</small></button>
-                    <button class="opt-btn opt-btn--size" data-value="12.5">Lv4<small class="opt-btn__sub">(約7mm, 25px)</small></button>
-                    <button class="opt-btn opt-btn--size" data-value="7.5">Lv5<small class="opt-btn__sub">(約4mm, 15px)</small></button>
+                    <button class="opt-btn opt-btn--radius opt-btn--active" data-value="42.5">Lv1<small class="opt-btn__sub">(約22mm, 85px)</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="37.5">Lv2<small class="opt-btn__sub">(約20mm, 75px)</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="25">Lv3<small class="opt-btn__sub">(約13mm, 50px)</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="12.5">Lv4<small class="opt-btn__sub">(約7mm, 25px)</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="7.5">Lv5<small class="opt-btn__sub">(約4mm, 15px)</small></button>
                 </div>
             </div>
 
@@ -217,8 +217,8 @@
 
         <!-- state: result -->
         <div class="result" style="display:none;">
+            <p class="result__clicks"></p>
             <p class="result__score"></p>
-            <p class="result__adj-score"></p>
             <p class="result__subtitle">あなたの反射神経レベルは...</p>
             <p class="result__rank"></p>
             <p class="result__desc"></p>
@@ -285,7 +285,7 @@
             // この範囲内に円の中心が来ないようにして視認性を確保する。
             const HUD_HEIGHT = 50;
 
-            function spawnCircle() {
+            function createCircle() {
                 const r = CONFIG.CIRCLE_RADIUS;
                 return {
                     cx: r + Math.random() * (CONFIG.CANVAS_WIDTH  - r * 2),
@@ -310,11 +310,13 @@
             let startTime  = null;                  // ゲーム開始時の timestamp
             let gameLoopId = null;                  // requestAnimationFrame の戻り値（キャンセルに使う）
 
-            // 現在のスコアから即座にランク文字を返すヘルパー。
-            function getCurrentRank() {
-                const lvInfo   = LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
-                const adjScore = Math.round(score * lvInfo.multiplier);
-                return (RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1]).rank;
+            function getLvInfo() {
+                return LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
+            }
+
+            function getRankEntry() {
+                const adjScore = Math.round(score * getLvInfo().multiplier);
+                return RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1];
             }
 
             // ==============================
@@ -346,21 +348,18 @@
                 ctx.shadowOffsetY = 0;
 
                 // スコアと現在ランクを左上に表示する。
-                // タイマー（28px）の 0.75 倍 = 21px に揃える。
                 ctx.fillStyle = "white";
                 ctx.font      = "bold 14px sans-serif";
                 ctx.textAlign = "left";
-                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL + "   現在のランク: " + getCurrentRank(), 12, 27);
+                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL + "   現在のランク: " + getRankEntry().rank, 12, 27);
 
                 // タイマーを canvas の右上に表示する。
                 // toFixed(1) で小数点1桁に丸める（例: 7.3）。
-                // Math.max(0, timeLeft) で 0 未満にならないようにする。
-                const displayTime = Math.max(0, timeLeft).toFixed(1);
                 // 残り時間に応じて色を変える（5秒以下でオレンジ、2秒以下で赤）。
                 ctx.fillStyle = timeLeft <= 2 ? "#FF4444" : timeLeft <= 5 ? "#FFA500" : "white";
                 ctx.font      = "bold 28px monospace";
                 ctx.textAlign = "right"; // テキストの基準点を右端に設定
-                ctx.fillText(displayTime + "秒", CONFIG.CANVAS_WIDTH - 16, 36);
+                ctx.fillText(Math.max(0, timeLeft).toFixed(1) + "秒", CONFIG.CANVAS_WIDTH - 16, 36);
             }
 
             // ==============================
@@ -396,11 +395,8 @@
                 totalSpawned = 0;  // 登場数をリセット
                 startTime    = performance.now(); // 開始時刻を記録
 
-                // CIRCLE_COUNT を 1〜5 の範囲に収める。
-                // Math.max で下限1、Math.min で上限5を保証する。
-                const count = Math.min(Math.max(CONFIG.CIRCLE_COUNT, 1), 5);
-                for (let i = 0; i < count; i++) {
-                    circles.push(spawnCircle());
+                for (let i = 0; i < CONFIG.CIRCLE_COUNT; i++) {
+                    circles.push(createCircle());
                     totalSpawned++;
                 }
 
@@ -422,11 +418,9 @@
                 cancelAnimationFrame(gameLoopId);
                 gameLoopId = null; // ESC 判定の誤作動を防ぐためリセット
 
-                // 選択中の Lv から倍率を取得し、スコアを算出する。
-                const lvInfo   = LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
-                const adjScore = Math.round(score * lvInfo.multiplier);
-                // RANK_TABLE は min の高い順なので、最初にマッチしたものが正しいランク。
-                const rankEntry = RANK_TABLE.find(r => adjScore >= r.min) ?? RANK_TABLE[RANK_TABLE.length - 1];
+                const lvInfo    = getLvInfo();
+                const adjScore  = Math.round(score * lvInfo.multiplier);
+                const rankEntry = getRankEntry();
 
                 // ランク文字を表示（SSランクのみ金色、それ以外は赤）。
                 const rankEl = document.querySelector(".result__rank");
@@ -434,9 +428,9 @@
                 rankEl.style.color = rankEntry.rank === "SS" ? "#FFD700" : "#E74C3C";
 
                 document.querySelector(".result__desc").textContent = rankEntry.description;
-                document.querySelector(".result__score").textContent =
+                document.querySelector(".result__clicks").textContent =
                     score + " / " + CONFIG.MAX_TOTAL + " 個クリック（Lv" + lvInfo.lv + "）";
-                document.querySelector(".result__adj-score").textContent =
+                document.querySelector(".result__score").textContent =
                     "スコア: " + adjScore + " 点（倍率: ×" + lvInfo.multiplier.toFixed(1) + "）";
 
                 // ランク一覧を動的に生成し、自分のランクを強調表示する。
@@ -484,7 +478,7 @@
                         }
                         // まだ登場できるボールが残っている場合だけ新しく出す。
                         if (totalSpawned < CONFIG.MAX_TOTAL) {
-                            circles.push(spawnCircle());
+                            circles.push(createCircle());
                             totalSpawned++;
                         }
                         break;
@@ -540,7 +534,7 @@
                 });
             }
 
-            setupOptionBtns(".opt-btn--size",  "CIRCLE_RADIUS");
+            setupOptionBtns(".opt-btn--radius",  "CIRCLE_RADIUS");
             setupOptionBtns(".opt-btn--count", "CIRCLE_COUNT");
         </script>
     </body>
