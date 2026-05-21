@@ -165,10 +165,10 @@
 
         <!-- state: result -->
         <div id="state-result" class="game-state" style="display:none;">
+            <p id="score-display"></p>
             <p class="result__subtitle">あなたの反射神経レベルは...</p>
             <p class="result__rank-letter" id="rank-display"></p>
             <p class="result__description" id="rank-description"></p>
-            <p id="score-display"></p>
             <table id="rank-table" class="result__rank-table"></table>
             <button id="retry-btn" class="action-btn">もう一度</button>
         </div>
@@ -292,11 +292,12 @@
                 ctx.shadowOffsetX = 0;
                 ctx.shadowOffsetY = 0;
 
-                // スコアを canvas の左上に n/30 形式で、その右に現在ランクを表示する。
+                // スコアと現在ランクを左上に表示する。
+                // タイマー（28px）の 0.75 倍 = 21px に揃える。
                 ctx.fillStyle = "white";
-                ctx.font      = "bold 22px sans-serif";
+                ctx.font      = "bold 14px sans-serif";
                 ctx.textAlign = "left";
-                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL + "   " + getCurrentRank(), 16, 36);
+                ctx.fillText(score + " / " + CONFIG.MAX_TOTAL + "   現在のランク: " + getCurrentRank(), 12, 27);
 
                 // タイマーを canvas の右上に表示する。
                 // toFixed(1) で小数点1桁に丸める（例: 7.3）。
