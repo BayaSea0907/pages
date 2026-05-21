@@ -176,7 +176,7 @@
             // タイマー管理。
             let timeLeft    = CONFIG.GAME_DURATION; // 残り秒数（draw() で参照する）
             let startTime   = null;                 // ゲーム開始時の timestamp
-            let animFrameId = null;                 // requestAnimationFrame の戻り値（キャンセルに使う）
+            let gameLoopId = null;                 // requestAnimationFrame の戻り値（キャンセルに使う）
 
             // ==============================
             // 描画
@@ -243,8 +243,8 @@
                 draw();
 
                 // 次のフレームで再び gameLoop を呼ぶよう予約する。
-                // 戻り値を animFrameId に保存しておくと、後でキャンセルできる。
-                animFrameId = requestAnimationFrame(gameLoop);
+                // 戻り値を gameLoopId に保存しておくと、後でキャンセルできる。
+                gameLoopId = requestAnimationFrame(gameLoop);
             }
 
             // ==============================
@@ -267,16 +267,17 @@
                 switchState("state-menu", "state-playing");
                 // draw() を直接呼ぶ代わりに gameLoop を起動する。
                 // 以降は gameLoop が毎フレーム draw() を呼び続ける。
-                animFrameId = requestAnimationFrame(gameLoop);
+                gameLoopId = requestAnimationFrame(gameLoop);
             }
 
             // ==============================
             // ゲーム終了
             // ==============================
             function endGame() {
-                // ループを止める。cancelAnimationFrame に animFrameId を渡すと
+                // ループを止める。cancelAnimationFrame に gameLoopId を渡すと
                 // 予約済みの次フレーム呼び出しをキャンセルできる。
-                cancelAnimationFrame(animFrameId);
+                cancelAnimationFrame(gameLoopId);
+                gameLoopId = null; // ESC 判定の誤作動を防ぐためリセット
 
                 // スコアに応じた評価メッセージを決める。
                 let message;
@@ -333,18 +334,26 @@
             // イベントリスナー
             // ボタンがクリックされたときに呼び出す関数を登録する。
             // ==============================
-            document.getElementById("start-btn").addEventListener("click", startGame);
-            document.getElementById("retry-btn").addEventListener("click", () => {
-                switchState("state-result", "state-menu");
-            });
-
-            // Esc キーでゲーム中断 → スタートメニューへ戻る。
-            // document に登録することで、canvas 以外がフォーカスされていても反応する。
-            document.addEventListener("keydown", (e) => {
-                if (e.key === "Escape" && animFrameId !== null) {
-                    cancelAnimationFrame(animFrameId);
-                    animFrameId = null;
+            // ゲーム中・結果画面のどちらからでもメニューへ戻る共通処理。
+            function returnToMenu() {
+                if (gameLoopId !== null) {
+                    cancelAnimationFrame(gameLoopId);
+                    gameLoopId = null;
                     switchState("state-playing", "state-menu");
+                } else {
+                    switchState("state-result", "state-menu");
+                }
+            }
+
+            document.getElementById("start-btn").addEventListener("click", startGame);
+            document.getElementById("retry-btn").addEventListener("click", returnToMenu);
+
+            // Esc キーでメニューへ戻る（ゲーム中・結果画面のどちらでも有効）。
+            document.addEventListener("keydown", (e) => {
+                if (e.key !== "Escape") return;
+                const onResult = document.getElementById("state-result").style.display === "block";
+                if (gameLoopId !== null || onResult) {
+                    returnToMenu();
                 }
             });
 
