@@ -316,6 +316,16 @@
                 switchState("state-result", "state-menu");
             });
 
+            // Esc キーでゲーム中断 → スタートメニューへ戻る。
+            // document に登録することで、canvas 以外がフォーカスされていても反応する。
+            document.addEventListener("keydown", (e) => {
+                if (e.key === "Escape" && animFrameId !== null) {
+                    cancelAnimationFrame(animFrameId);
+                    animFrameId = null;
+                    switchState("state-playing", "state-menu");
+                }
+            });
+
             // ボタングループの active 切り替えと CONFIG 更新をまとめたヘルパー関数。
             // selector: 対象ボタンの CSS セレクタ、configKey: 更新する CONFIG のキー名。
             // CONFIG[configKey] はブラケット記法で、変数でキーを指定してアクセスする。
