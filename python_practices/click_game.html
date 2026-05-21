@@ -17,28 +17,29 @@
                 height: auto;
             }
             /* スタート・リトライボタン */
-            #start-btn, #retry-btn {
+            .action-btn {
                 padding: 12px 28px;
                 font-size: 1.1em;
                 cursor: pointer;
                 margin-top: 16px;
             }
             /* メニューの各設定行 */
-            .menu-option {
+            .menu__option {
                 margin: 16px 0;
             }
-            .menu-option label {
+            .menu__label {
                 display: block;
                 margin-bottom: 8px;
                 font-weight: bold;
             }
             /* 選択ボタンのグループ */
-            .btn-group {
+            .menu__btn-group {
                 display: flex;
                 justify-content: center;
                 gap: 8px;
                 flex-wrap: wrap; /* 画面が狭いとき折り返す */
             }
+            /* 選択ボタン（基本） */
             .opt-btn {
                 padding: 8px 16px;
                 font-size: 1em;
@@ -48,14 +49,14 @@
                 border-radius: 6px;
                 line-height: 1.4;
             }
-            /* サイズボタンの mm 表記（小さめに表示） */
-            .size-btn small {
+            /* ボタン内の補足テキスト（mm・px 表記） */
+            .opt-btn__sub {
                 display: block;
                 font-size: 0.75em;
                 opacity: 0.8;
             }
-            /* 選択中のボタン */
-            .opt-btn.active {
+            /* 選択中のボタン（modifier） */
+            .opt-btn--active {
                 background: #E74C3C;
                 color: white;
                 border-color: #C0392B;
@@ -73,34 +74,34 @@
                 全部クリックできれば完璧スコア達成だ！反射神経が試されるぞ！
             </p>
 
-            <div class="menu-option">
-                <label>ボールのサイズ</label>
+            <div class="menu__option">
+                <label class="menu__label">ボールのサイズ</label>
                 <!--
                     data-value は半径（radius）を px で持つ。
                     ボタンのラベルは直径（diameter = radius × 2）を表示。
                     mm換算は 96dpi 基準（1px ≈ 0.26mm）のおおよその値。
                 -->
-                <div class="btn-group">
-                    <button class="opt-btn size-btn active" data-value="45">Lv1<small>(約24mm, 90px)</small></button>
-                    <button class="opt-btn size-btn" data-value="37.5">Lv2<small>(約20mm, 75px)</small></button>
-                    <button class="opt-btn size-btn" data-value="25">Lv3<small>(約13mm, 50px)</small></button>
-                    <button class="opt-btn size-btn" data-value="12.5">Lv4<small>(約7mm, 25px)</small></button>
-                    <button class="opt-btn size-btn" data-value="5">Lv5<small>(約3mm, 10px)</small></button>
+                <div class="menu__btn-group">
+                    <button class="opt-btn opt-btn--size opt-btn--active" data-value="45">Lv1<small class="opt-btn__sub">(約24mm, 90px)</small></button>
+                    <button class="opt-btn opt-btn--size" data-value="37.5">Lv2<small class="opt-btn__sub">(約20mm, 75px)</small></button>
+                    <button class="opt-btn opt-btn--size" data-value="25">Lv3<small class="opt-btn__sub">(約13mm, 50px)</small></button>
+                    <button class="opt-btn opt-btn--size" data-value="12.5">Lv4<small class="opt-btn__sub">(約7mm, 25px)</small></button>
+                    <button class="opt-btn opt-btn--size" data-value="5">Lv5<small class="opt-btn__sub">(約3mm, 10px)</small></button>
                 </div>
             </div>
 
-            <div class="menu-option">
-                <label>同時に出現するボールの数</label>
-                <div class="btn-group">
-                    <button class="opt-btn count-btn active" data-value="1">1</button>
-                    <button class="opt-btn count-btn" data-value="2">2</button>
-                    <button class="opt-btn count-btn" data-value="3">3</button>
-                    <button class="opt-btn count-btn" data-value="4">4</button>
-                    <button class="opt-btn count-btn" data-value="5">5</button>
+            <div class="menu__option">
+                <label class="menu__label">同時に出現するボールの数</label>
+                <div class="menu__btn-group">
+                    <button class="opt-btn opt-btn--count opt-btn--active" data-value="1">1</button>
+                    <button class="opt-btn opt-btn--count" data-value="2">2</button>
+                    <button class="opt-btn opt-btn--count" data-value="3">3</button>
+                    <button class="opt-btn opt-btn--count" data-value="4">4</button>
+                    <button class="opt-btn opt-btn--count" data-value="5">5</button>
                 </div>
             </div>
 
-            <button id="start-btn">スタート</button>
+            <button id="start-btn" class="action-btn">スタート</button>
         </div>
 
         <!-- state: playing -->
@@ -113,7 +114,7 @@
             <h2>結果</h2>
             <p id="score-display"></p>
             <p id="score-message"></p>
-            <button id="retry-btn">もう一度</button>
+            <button id="retry-btn" class="action-btn">もう一度</button>
         </div>
 
         <script>
@@ -354,8 +355,8 @@
             function setupOptionBtns(selector, configKey) {
                 document.querySelectorAll(selector).forEach(btn => {
                     btn.addEventListener("click", () => {
-                        document.querySelectorAll(selector).forEach(b => b.classList.remove("active"));
-                        btn.classList.add("active");
+                        document.querySelectorAll(selector).forEach(b => b.classList.remove("opt-btn--active"));
+                        btn.classList.add("opt-btn--active");
                         // dataset.value は HTML の data-value 属性の値（文字列）。
                         // parseFloat を使うことで 12.5 などの小数も正確に読み取れる。
                         CONFIG[configKey] = parseFloat(btn.dataset.value);
@@ -363,8 +364,8 @@
                 });
             }
 
-            setupOptionBtns(".size-btn",  "CIRCLE_RADIUS");
-            setupOptionBtns(".count-btn", "CIRCLE_COUNT");
+            setupOptionBtns(".opt-btn--size",  "CIRCLE_RADIUS");
+            setupOptionBtns(".opt-btn--count", "CIRCLE_COUNT");
         </script>
     </body>
 </html>
