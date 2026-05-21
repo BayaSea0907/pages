@@ -219,11 +219,11 @@
             // 調整スコア（クリック数×倍率）に応じたランク定義。
             // min が高い順に並べ、最初にマッチしたランクを採用する。
             const RANK_TABLE = [
-                { rank: "SS", threshold: "27点以上", min: 27, label: "プロゲーマーレベル", description: "猫と張り合えそう..."                   },
-                { rank: "S",  threshold: "21点以上", min: 21, label: "ゲームランカー勢",   description: "ジャンケン絶対に勝てそう..."              },
-                { rank: "A",  threshold: "15点以上", min: 15, label: "ゲーム上手い勢",     description: "蚊を仕留めるのはお手のもの..."        },
-                { rank: "B",  threshold: "9点以上",  min: 9,  label: "ゲームカジュアル勢", description: "可もなく不可もなく普通です..."         },
-                { rank: "C",  threshold: "9点未満",  min: 0,  label: "ゲームやらない勢",   description: "今すぐ免許返納したほうが良さそう..."   },
+                { rank: "SS", threshold: "27~30", min: 27, label: "プロゲーマーレベル", description: "猫と張り合えそう..."                   },
+                { rank: "S",  threshold: "21~26", min: 21, label: "ゲームランカー勢",   description: "ジャンケン絶対に勝てそう..."              },
+                { rank: "A",  threshold: "15~20", min: 15, label: "ゲーム上手い勢",     description: "蚊を仕留めるのはお手のもの..."        },
+                { rank: "B",  threshold: "9~14",  min: 9,  label: "ゲームカジュアル勢", description: "可もなく不可もなく普通です..."         },
+                { rank: "C",  threshold: "0~8",   min: 0,  label: "ゲームやらない勢",   description: "今すぐ免許返納したほうが良さそう..."   },
             ];
 
             // ==============================
@@ -405,7 +405,7 @@
                 // ランク一覧を動的に生成し、自分のランクを強調表示する。
                 document.getElementById("rank-table").innerHTML = RANK_TABLE.map(r =>
                     `<tr class="${r.rank === rankEntry.rank ? "is-current" : ""}">
-                        <td>${r.rank}</td>
+                        <td>${r.rank}（${r.threshold}）</td>
                         <td>${r.label}</td>
                         <td>${r.rank === rankEntry.rank ? "← あなた" : ""}</td>
                     </tr>`
