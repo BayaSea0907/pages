@@ -126,20 +126,20 @@
                 color: white;
                 border-color: #C0392B;
             }
-            /* 3番: "あなたの反射神経レベルは..." */
+            /* "あなたの反射神経レベルは..." */
             .result__subtitle {
                 font-size: 1.1em;
                 font-weight: bold;
                 color: #555;
                 margin: 4px 0 12px;
             }
-            /* 2番: ランク文字 */
+            /* ランク文字 */
             .result__rank-letter {
                 font-size: 3.2em;
                 font-weight: bold;
                 margin: 8px 0;
             }
-            /* 5番: description（最小） */
+            /* description（最小） */
             .result__description {
                 font-size: 0.9em;
                 color: #666;
@@ -153,6 +153,7 @@
             .result__rank-table td {
                 padding: 6px 20px;
             }
+            #score-display, #adj-score-display { font-weight: bold; font-size: 14px; }
             /* 現在のランク行を強調 */
             .result__rank-table tr.is-current td {
                 font-weight: bold;
@@ -212,6 +213,8 @@
         <!-- state: result -->
         <div id="state-result" class="game-state" style="display:none;">
             <p id="score-display"></p>
+            <p id="adj-score-display"></p>
+            <p id="lv-info-display"></p>
             <p class="result__subtitle">あなたの反射神経レベルは...</p>
             <p class="result__rank-letter" id="rank-display"></p>
             <p class="result__description" id="rank-description"></p>
@@ -244,7 +247,7 @@
                 7.5:  { lv: 5, multiplier: 3.0 },
             };
 
-            // 調整スコア（クリック数×倍率）に応じたランク定義。
+            // スコア（クリック数×倍率）に応じたランク定義。
             // min が高い順に並べ、最初にマッチしたランクを採用する。
             const RANK_TABLE = [
                 { rank: "SS", threshold: "27~30", min: 27, label: "プロゲーマーレベル", description: "猫と張り合えそう..."                   },
@@ -292,7 +295,7 @@
             let circles = [];
 
             // クリック成功数（スコア）。
-            let score = 0;
+            let score = 0.0;
 
             // ゲーム開始からこれまでに登場したボールの累計数。
             // MAX_TOTAL に達したら新しいボールを出さない。
@@ -415,7 +418,7 @@
                 cancelAnimationFrame(gameLoopId);
                 gameLoopId = null; // ESC 判定の誤作動を防ぐためリセット
 
-                // 選択中の Lv から倍率を取得し、調整スコアを算出する。
+                // 選択中の Lv から倍率を取得し、スコアを算出する。
                 const lvInfo   = LV_TABLE[CONFIG.CIRCLE_RADIUS] ?? { lv: 1, multiplier: 1.0 };
                 const adjScore = Math.round(score * lvInfo.multiplier);
                 // RANK_TABLE は min の高い順なので、最初にマッチしたものが正しいランク。
@@ -429,6 +432,8 @@
                 document.getElementById("rank-description").textContent = rankEntry.description;
                 document.getElementById("score-display").textContent =
                     score + " / " + CONFIG.MAX_TOTAL + " 個クリック（Lv" + lvInfo.lv + "）";
+                document.getElementById("adj-score-display").textContent =
+                    "スコア: " + adjScore + " 点（倍率: ×" + lvInfo.multiplier.toFixed(1) + "）";
 
                 // ランク一覧を動的に生成し、自分のランクを強調表示する。
                 document.getElementById("rank-table").innerHTML = RANK_TABLE.map(r =>
