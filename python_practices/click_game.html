@@ -12,6 +12,9 @@
             canvas {
                 display: block;
                 margin: 0 auto;
+                /* 画面幅より広い場合は縮小し、縦横比を保って高さも追従させる */
+                max-width: 100%;
+                height: auto;
             }
             /* スタート・リトライボタン */
             #start-btn, #retry-btn {
@@ -34,14 +37,22 @@
                 display: flex;
                 justify-content: center;
                 gap: 8px;
+                flex-wrap: wrap; /* 画面が狭いとき折り返す */
             }
             .opt-btn {
-                padding: 8px 20px;
+                padding: 8px 16px;
                 font-size: 1em;
                 cursor: pointer;
                 border: 2px solid #ccc;
                 background: white;
                 border-radius: 6px;
+                line-height: 1.4;
+            }
+            /* サイズボタンの mm 表記（小さめに表示） */
+            .size-btn small {
+                display: block;
+                font-size: 0.75em;
+                opacity: 0.8;
             }
             /* 選択中のボタン */
             .opt-btn.active {
@@ -64,11 +75,17 @@
 
             <div class="menu-option">
                 <label>ボールのサイズ</label>
-                <!-- data-value に半径（px）を持たせ、JS で読み取る -->
+                <!--
+                    data-value は半径（radius）を px で持つ。
+                    ボタンのラベルは直径（diameter = radius × 2）を表示。
+                    mm換算は 96dpi 基準（1px ≈ 0.26mm）のおおよその値。
+                -->
                 <div class="btn-group">
-                    <button class="opt-btn size-btn" data-value="25">小</button>
-                    <button class="opt-btn size-btn active" data-value="40">中</button>
-                    <button class="opt-btn size-btn" data-value="60">大</button>
+                    <button class="opt-btn size-btn active" data-value="45">Lv1<small>(約24mm, 90px)</small></button>
+                    <button class="opt-btn size-btn" data-value="37.5">Lv2<small>(約20mm, 75px)</small></button>
+                    <button class="opt-btn size-btn" data-value="25">Lv3<small>(約13mm, 50px)</small></button>
+                    <button class="opt-btn size-btn" data-value="12.5">Lv4<small>(約7mm, 25px)</small></button>
+                    <button class="opt-btn size-btn" data-value="5">Lv5<small>(約3mm, 10px)</small></button>
                 </div>
             </div>
 
@@ -109,7 +126,7 @@
                 GAME_DURATION:  10, // ゲーム時間（秒）
                 MAX_TOTAL:      30, // 1ゲームで登場するボールの最大数
                 CIRCLE_COUNT:   1,  // 同時に表示する円の数（1〜5）
-                CIRCLE_RADIUS:  40, // 円の半径（px）
+                CIRCLE_RADIUS:  45, // 円の半径（px）← 直径90px（Lv1）がデフォルト
                 CANVAS_WIDTH:  600, // canvas の横幅（上の width 属性と合わせる）
                 CANVAS_HEIGHT: 400, // canvas の縦幅（上の height 属性と合わせる）
             };
@@ -285,8 +302,12 @@
                 // getBoundingClientRect() で画面上の canvas の位置とサイズを取得する。
                 const canvasRect = canvas.getBoundingClientRect();
 
-                const x = e.clientX - canvasRect.left;
-                const y = e.clientY - canvasRect.top;
+                // CSS で canvas が縮小されていると、表示サイズと内部解像度がずれる。
+                // scaleX/Y で補正することで、どの画面サイズでも判定がずれなくなる。
+                const scaleX = canvas.width  / canvasRect.width;
+                const scaleY = canvas.height / canvasRect.height;
+                const x = (e.clientX - canvasRect.left) * scaleX;
+                const y = (e.clientY - canvasRect.top)  * scaleY;
 
                 for (let i = 0; i < circles.length; i++) {
                     const c = circles[i];
@@ -336,7 +357,8 @@
                         document.querySelectorAll(selector).forEach(b => b.classList.remove("active"));
                         btn.classList.add("active");
                         // dataset.value は HTML の data-value 属性の値（文字列）。
-                        CONFIG[configKey] = parseInt(btn.dataset.value);
+                        // parseFloat を使うことで 12.5 などの小数も正確に読み取れる。
+                        CONFIG[configKey] = parseFloat(btn.dataset.value);
                     });
                 });
             }
