@@ -206,13 +206,16 @@
             // ==============================
             // 円の生成
             // ==============================
+            // HUD（スコア・タイマー表示）が占める上部の高さ。
+            // この範囲内に円の中心が来ないようにして視認性を確保する。
+            const HUD_HEIGHT = 50;
+
             function spawnCircle() {
                 const r = CONFIG.CIRCLE_RADIUS;
                 return {
-                    // 中心座標（cx, cy）を radius 分だけ内側の範囲でランダムに決める。
-                    // r〜(CANVAS_WIDTH - r) の範囲にすることで円がはみ出さない。
-                    cx:     r + Math.random() * (CONFIG.CANVAS_WIDTH  - r * 2),
-                    cy:     r + Math.random() * (CONFIG.CANVAS_HEIGHT - r * 2),
+                    cx: r + Math.random() * (CONFIG.CANVAS_WIDTH  - r * 2),
+                    // HUD_HEIGHT + r を下限にすることで HUD 領域に被らない位置に出現させる。
+                    cy: HUD_HEIGHT + r + Math.random() * (CONFIG.CANVAS_HEIGHT - HUD_HEIGHT - r * 2),
                     radius: r,
                 };
             }
