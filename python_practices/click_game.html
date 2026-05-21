@@ -26,6 +26,14 @@
                 #state-menu p {
                     font-size: 0.85em;
                 }
+                /* ランク一覧をスマホ向けに縮小して表示崩れを防ぐ */
+                .result__rank-table {
+                    font-size: 0.8em;
+                    width: max-content;
+                }
+                .result__rank-table td {
+                    padding: 4px 4px;
+                }
                 /* PC の flex 中央揃えレイアウトをブロックに戻す。
                    switchState() が display:block を上書きするため、
                    初回表示と遷移後で挙動を揃えるために明示的に block を指定する。 */
@@ -143,7 +151,7 @@
             <p>
                 画面に次々と現れるボールをクリックしよう！<br>
                 制限時間は <strong>10秒</strong>、登場するボールは最大 <strong>30個</strong>。<br>
-                全部クリックできれば完璧スコア達成だ！反射神経が試されるぞ！
+                全部クリックできれば天才だ！反射神経が試されるぞ！
             </p>
 
             <div class="menu__option">
@@ -223,7 +231,7 @@
                 { rank: "S",  threshold: "21~26", min: 21, label: "ゲームランカー勢",   description: "ジャンケン絶対に勝てそう..."              },
                 { rank: "A",  threshold: "15~20", min: 15, label: "ゲーム上手い勢",     description: "蚊を仕留めるのはお手のもの..."        },
                 { rank: "B",  threshold: "9~14",  min: 9,  label: "ゲームカジュアル勢", description: "可もなく不可もなく普通です..."         },
-                { rank: "C",  threshold: "0~8",   min: 0,  label: "ゲームやらない勢",   description: "今すぐ免許返納したほうが良さそう..."   },
+                { rank: "C",  threshold: "0~8",   min: 0,  label: "ドパガキ",   description: "運転免許を持ってたら返納してください..."   },
             ];
 
             // ==============================
