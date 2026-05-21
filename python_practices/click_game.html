@@ -9,6 +9,19 @@
                 font-family: sans-serif;
                 text-align: center;
             }
+            /* スマートフォン（canvas幅600px未満）では画面中央に縦揃えする */
+            @media (max-width: 600px) {
+                body {
+                    min-height: 100dvh;
+                    display: flex;
+                    flex-direction: column;
+                    justify-content: center;
+                    align-items: center;
+                    margin: 0;
+                    padding: 16px 0;
+                    box-sizing: border-box;
+                }
+            }
             canvas {
                 display: block;
                 margin: 0 auto;
