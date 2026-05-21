@@ -12,10 +12,8 @@
             /* スマートフォン（canvas幅600px未満）では画面中央に縦揃えする */
             @media (max-width: 600px) {
                 body {
-                    min-height: 100dvh;
                     display: flex;
                     flex-direction: column;
-                    justify-content: center;
                     align-items: center;
                     margin: 0;
                     padding: 16px 0;
@@ -34,14 +32,6 @@
                 .result__rank-table td {
                     padding: 4px 4px;
                 }
-                /* PC の flex 中央揃えレイアウトをブロックに戻す。
-                   switchState() が display:block を上書きするため、
-                   初回表示と遷移後で挙動を揃えるために明示的に block を指定する。 */
-                .menu,
-                .result {
-                    height: auto;
-                    display: block;
-                }
             }
             canvas {
                 display: block;
@@ -49,15 +39,20 @@
                 max-width: 100%;
                 height: auto;
             }
-            /* メニュー・結果の各状態をキャンバスと同じ高さで縦中央揃えにする。
-               スタートボタンを押したとき、指の位置がゲーム画面の中央付近と一致する。 */
+            /* メニュー・結果は常に中央揃え。デスクトップではキャンバスと同じ高さに固定して
+               スタートボタンの位置をゲーム画面の中央付近に揃える。 */
             .menu,
             .result {
-                height: 400px;
                 display: flex;
                 flex-direction: column;
-                justify-content: center;
                 align-items: center;
+            }
+            @media (min-width: 601px) {
+                .menu,
+                .result {
+                    min-height: 400px;
+                    justify-content: center;
+                }
             }
             /* ゲームプレイ中はcanvasを画面中央に配置する */
             .playing {
@@ -179,17 +174,12 @@
 
             <div class="menu__option">
                 <label class="menu__label">ボールのサイズ</label>
-                <!--
-                    data-value は半径（radius）を px で持つ。
-                    ボタンのラベルは直径（diameter = radius × 2）を表示。
-                    mm換算は 96dpi 基準（1px ≈ 0.26mm）のおおよその値。
-                -->
                 <div class="menu__btn-group">
-                    <button class="opt-btn opt-btn--radius opt-btn--active" data-value="42.5">Lv1<small class="opt-btn__sub">(約22mm, 85px)</small></button>
-                    <button class="opt-btn opt-btn--radius" data-value="37.5">Lv2<small class="opt-btn__sub">(約20mm, 75px)</small></button>
-                    <button class="opt-btn opt-btn--radius" data-value="25">Lv3<small class="opt-btn__sub">(約13mm, 50px)</small></button>
-                    <button class="opt-btn opt-btn--radius" data-value="12.5">Lv4<small class="opt-btn__sub">(約7mm, 25px)</small></button>
-                    <button class="opt-btn opt-btn--radius" data-value="7.5">Lv5<small class="opt-btn__sub">(約4mm, 15px)</small></button>
+                    <button class="opt-btn opt-btn--radius opt-btn--active" data-value="42.5">Lv1<small class="opt-btn__sub">85px</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="37.5">Lv2<small class="opt-btn__sub">75px</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="25">Lv3<small class="opt-btn__sub">50px</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="12.5">Lv4<small class="opt-btn__sub">25px</small></button>
+                    <button class="opt-btn opt-btn--radius" data-value="7.5">Lv5<small class="opt-btn__sub">15px</small></button>
                 </div>
             </div>
 
@@ -201,6 +191,14 @@
                     <button class="opt-btn opt-btn--count" data-value="3">3</button>
                     <button class="opt-btn opt-btn--count" data-value="4">4</button>
                     <button class="opt-btn opt-btn--count" data-value="5">5</button>
+                </div>
+            </div>
+
+            <div class="menu__option">
+                <label class="menu__label">ボールの動き</label>
+                <div class="menu__btn-group">
+                    <button class="opt-btn opt-btn--move opt-btn--active" data-value="0">停止モード</button>
+                    <button class="opt-btn opt-btn--move" data-value="1">移動モード</button>
                 </div>
             </div>
 
@@ -233,12 +231,13 @@
             // Python でいう定数辞書 CONFIG = {...} と同じ感覚。
             // ==============================
             const CONFIG = {
-                GAME_DURATION:  10, // ゲーム時間（秒）
-                MAX_TOTAL:      30, // 1ゲームで登場するボールの最大数
-                CIRCLE_COUNT:   1,  // 同時に表示する円の数（1〜5）
-                CIRCLE_RADIUS:  42.5, // 円の半径（px）← 直径85px（Lv1）がデフォルト
-                CANVAS_WIDTH:  600, // canvas の横幅（上の width 属性と合わせる）
-                CANVAS_HEIGHT: 400, // canvas の縦幅（上の height 属性と合わせる）
+                GAME_DURATION:  10,    // ゲーム時間（秒）
+                MAX_TOTAL:      30,    // 1ゲームで登場するボールの最大数
+                CIRCLE_COUNT:   1,     // 同時に表示する円の数（1〜5）
+                CIRCLE_RADIUS:  42.5,  // 円の半径（px）← 直径85px（Lv1）がデフォルト
+                CANVAS_WIDTH:  600,    // canvas の横幅（上の width 属性と合わせる）
+                CANVAS_HEIGHT: 400,    // canvas の縦幅（上の height 属性と合わせる）
+                BALL_MOVES:    false,  // true: ボールが動く、false: 静止
             };
 
             // 円サイズ（半径）から難易度情報へのマッピング。
@@ -285,14 +284,34 @@
             // この範囲内に円の中心が来ないようにして視認性を確保する。
             const HUD_HEIGHT = 50;
 
+            // ボールの移動速度（px/フレーム）。
+            const BALL_SPEED = 3;
+
             function createCircle() {
-                const r = CONFIG.CIRCLE_RADIUS;
+                const r     = CONFIG.CIRCLE_RADIUS;
+                const angle = Math.random() * Math.PI * 2;
                 return {
                     cx: r + Math.random() * (CONFIG.CANVAS_WIDTH  - r * 2),
                     // HUD_HEIGHT + r を下限にすることで HUD 領域に被らない位置に出現させる。
                     cy: HUD_HEIGHT + r + Math.random() * (CONFIG.CANVAS_HEIGHT - HUD_HEIGHT - r * 2),
                     radius: r,
+                    vx: Math.cos(angle) * BALL_SPEED,
+                    vy: Math.sin(angle) * BALL_SPEED,
                 };
+            }
+
+            function moveCircles() {
+                const r = CONFIG.CIRCLE_RADIUS;
+                for (const c of circles) {
+                    c.cx += c.vx;
+                    c.cy += c.vy;
+                    // 左右の壁で反射。
+                    if (c.cx - r < 0)                    { c.cx = r;                       c.vx *= -1; }
+                    if (c.cx + r > CONFIG.CANVAS_WIDTH)  { c.cx = CONFIG.CANVAS_WIDTH - r; c.vx *= -1; }
+                    // 上下の壁で反射（上端は HUD 領域の下まで）。
+                    if (c.cy - r < HUD_HEIGHT)           { c.cy = HUD_HEIGHT + r;          c.vy *= -1; }
+                    if (c.cy + r > CONFIG.CANVAS_HEIGHT) { c.cy = CONFIG.CANVAS_HEIGHT - r; c.vy *= -1; }
+                }
             }
 
             // 画面上に表示中の円を入れておく配列。
@@ -379,6 +398,7 @@
                     return; // ここで関数を抜けてループを止める
                 }
 
+                if (CONFIG.BALL_MOVES) moveCircles();
                 draw();
 
                 // 次のフレームで再び gameLoop を呼ぶよう予約する。
@@ -534,8 +554,16 @@
                 });
             }
 
-            setupOptionBtns(".opt-btn--radius",  "CIRCLE_RADIUS");
-            setupOptionBtns(".opt-btn--count", "CIRCLE_COUNT");
+            setupOptionBtns(".opt-btn--radius", "CIRCLE_RADIUS");
+            setupOptionBtns(".opt-btn--count",  "CIRCLE_COUNT");
+            // BALL_MOVES は boolean なので setupOptionBtns は使わず個別に処理する。
+            document.querySelectorAll(".opt-btn--move").forEach(btn => {
+                btn.addEventListener("click", () => {
+                    document.querySelectorAll(".opt-btn--move").forEach(b => b.classList.remove("opt-btn--active"));
+                    btn.classList.add("opt-btn--active");
+                    CONFIG.BALL_MOVES = btn.dataset.value === "1";
+                });
+            });
         </script>
     </body>
 </html>
