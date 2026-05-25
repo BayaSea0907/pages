@@ -1,8 +1,11 @@
 {
   "name": "Splatoon Django",
-  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+  // docker in dockerが3.12に対応していなかったのでbookwormを指定(2026/5/24時点)
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "remoteUser": "root",
   "customizations": {
     "vscode": {
+      // DevContainer内で使いたいVS Codeの拡張機能。拡張機能の「識別子」を列挙している。
       "extensions": [
         "ms-ceintl.vscode-language-pack-ja",
         "ms-azuretools.vscode-docker",
@@ -11,5 +14,12 @@
         "anthropic.claude-code"
       ]
     }
+  },
+  // DevContainer内で利用可能な機能一覧
+  // https://containers.dev/features
+  "features": {
+    "ghcr.io/devcontainers/features/node:2": {},
+    // DevContainerの中で更にDockerを使えるようにする
+    "ghcr.io/devcontainers/features/docker-in-docker:3": {}
   }
 }
