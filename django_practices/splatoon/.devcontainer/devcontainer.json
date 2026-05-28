@@ -22,6 +22,15 @@
     // DevContainerの中で更にDockerを使えるようにする
     "ghcr.io/devcontainers/features/docker-in-docker:3": {}
   },
-  // コンテナ作成後にClaude Code CLIをインストール
-  "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
+  // コンテナ作成後にDjangoとClaude Code CLIをインストール（並列実行）
+  "postCreateCommand": {
+    "install-django": "pip install django",
+    "install-claude": "npm install -g @anthropic-ai/claude-code"
+  },
+  "mounts": [
+    "source=${localEnv:HOME}/.gitconfig,target=/root/.gitconfig,type=bind,readonly",
+    "source=${localEnv:HOME}/.zprofile,target=/root/.zprofile,type=bind,readonly",
+    "source=${localEnv:HOME}/.zshrc,target=/root/.zshrc,type=bind,readonly",
+    "source=${localEnv:HOME}/.claude,target=/root/.claude,type=bind,readonly"
+  ],
 }
