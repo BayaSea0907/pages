@@ -21,5 +21,7 @@
     "ghcr.io/devcontainers/features/node:2": {},
     // DevContainerの中で更にDockerを使えるようにする
     "ghcr.io/devcontainers/features/docker-in-docker:3": {}
-  }
+  },
+  // コンテナ作成後にClaude Code CLIをインストール
+  "postCreateCommand": "npm install -g @anthropic-ai/claude-code"
 }
