@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<!--
+  ============================================================================
+  適時開示ウォッチャー（TDnet）  —  設計思想ガイド（初学者向け）
+  ============================================================================
+
+  ■ このアプリは何をするか
+    東証のTDnet（適時開示情報）から、期間とキーワードで開示情報を検索し、
+    自分の保有・ウォッチ銘柄を強調しながら一覧表示する「1枚もの」のWebページ。
+
+  ■ なぜ「1ファイル」「CDN読み込み」なのか（設計思想その1：最小構成）
+    - npm install やビルド（webpack/Vite等）を一切使わず、HTML 1枚で完結させている。
+    - Vue本体は <script src="https://unpkg.com/vue@3..."> でネット越しに読むだけ（CDN）。
+    - これにより「ダブルクリックで開けば動く」「GitHub Pagesに置くだけで公開できる」。
+    - 学習用・小規模ツールでは、ビルド環境を整えるより圧倒的に手軽。
+
+  ■ Vueの基本思想（設計思想その2：宣言的UI＝データが主役）
+    - 従来のJS（jQuery等）は「DOMを手で書き換える」命令的スタイル。
+      例：「この要素のtextを書き換えろ」と1つ1つ指示する。
+    - Vueは「データ（状態）はこうだ」と宣言すると、画面（DOM）を自動で同期してくれる。
+      → 我々は『データ』を更新するだけ。画面の更新はVueが面倒を見る（これを「リアクティブ」と呼ぶ）。
+    - 役割分担がはっきりしている：
+        data    … アプリの「状態（State）」。これが変わると画面が変わる。
+        computed… 状態から「計算して導く値」。元が変わった時だけ再計算（キャッシュされる）。
+        methods … ボタン押下などで呼ぶ「処理（関数）」。
+        template… 状態をどう画面に映すかの「設計図」（HTML側）。
+
+  ■ データの流れ（設計思想その3：一方向のパイプライン）
+    入力(keyword/期間)
+      → search() が TDnet を fetch（プロキシ経由）
+      → HTMLを解析(parse)して行データ化
+      → キーワードで絞り込み(filter)
+      → this.results（状態）に格納
+      → computed が「お気に入り優先」等を加工
+      → template が自動で表に描画
+    「状態を変えれば画面が追従する」ので、画面更新コードを書かなくてよい。
+
+  ■ 見た目の思想（設計思想その4：CSS変数でテーマ切替）
+    - 色を直接書かず「変数(--bg 等)」で書く。ダークモードはその変数の中身を差し替えるだけ。
+    - これで1セットのCSSからライト/ダーク両対応を実現している。
+
+  ■ なぜプロキシ経由なのか
+    - ブラウザの安全機能(CORS)により、別ドメインのTDnetへ直接アクセスすると弾かれる。
+    - そこで間に中継サーバー(api.allorigins.win)を挟んでデータを取得している。
+  ============================================================================
+-->
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <!-- 【解説】viewport: スマホでも適切な拡大率で表示するためのお約束（レスポンシブの土台） -->
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>適時開示ウォッチャー（TDnet）</title>
+    <!-- 【解説】Vue本体をCDNから読み込む。これで window.Vue が使えるようになる（ビルド不要版） -->
+    <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
+    <style>
+      /*
+        【解説：CSS変数（カスタムプロパティ）】
+        --xxx という名前で「色などの値」を定義し、後で var(--xxx) で参照できる。
+        :root は「ページ全体の最上位」を指す擬似セレクタ。ここで定義した変数はどこからでも使える。
+        ↓これがライトモードの配色セット。
+      */
+      :root {
+        --bg: #f4f6f8;        /* ページ背景 */
+        --fg: #222;           /* 文字色（foreground） */
+        --card: #fff;         /* カードや表の背景 */
+        --border: #e0e0e0;    /* 枠線 */
+        --muted: #666;        /* 補助的な薄い文字 */
+        --th: #f0f3f7;        /* 表ヘッダ背景 */
+        --even: #fafbfc;      /* 表の偶数行背景（ゼブラ模様） */
+        --link: #2563eb;      /* リンク色 */
+        --hover: #eef3ff;     /* マウスホバー時の背景 */
+        --hl: #fff3b0;        /* キーワード一致のマーカー色 */
+        --pos: #15803d;       /* ポジティブ語（緑） */
+        --neg: #c0392b;       /* ネガティブ語（赤） */
+        --fav-owned-bg: #fff7e6;     /* 保有銘柄の行背景 */
+        --fav-owned-accent: #f59e0b; /* 保有銘柄の左アクセント線 */
+        --fav-watch-bg: #f3f4f6;     /* ウォッチ銘柄の行背景 */
+        --fav-watch-accent: #9ca3af; /* ウォッチ銘柄の左アクセント線 */
+      }
+      /*
+        【解説：ダークモードの実装】
+        body に "dark" クラスが付いたときだけ、同じ変数名を「暗い色」で上書きする。
+        変数を差し替えるだけで、これらの変数を使う全要素の色が一斉に切り替わる。
+        （JS側で this.darkMode を切り替えると body.classList に "dark" を付け外しする）
+      */
+      body.dark {
+        --bg: #1b1d21;
+        --fg: #e6e6e6;
+        --card: #26292e;
+        --border: #3a3d42;
+        --muted: #9aa0a6;
+        --th: #2f3338;
+        --even: #22252a;
+        --link: #7aa7ff;
+        --hover: #2c323d;
+        --hl: rgba(250, 204, 21, 0.28);
+        --pos: #4ade80;
+        --neg: #f87171;
+        --fav-owned-bg: #36301f;
+        --fav-owned-accent: #f59e0b;
+        --fav-watch-bg: #2c2f34;
+        --fav-watch-accent: #6b7280;
+      }
+      body {
+        /* 【解説】font-family: 先頭から順にフォントを探し、無ければ次の候補へ（フォールバック） */
+        font-family: system-ui, "Hiragino Kaku Gothic ProN", "Meiryo", sans-serif;
+        margin: 0;
+        background: var(--bg); /* 直接色を書かず変数を参照→テーマ切替で自動変化 */
+        color: var(--fg);
+      }
+      #app {
+        /* 【解説】# はid指定。<div id="app"> 1つだけに当たる。max-widthで横幅を制限し中央寄せ */
+        max-width: 1040px;
+        margin: 0 auto;       /* 左右autoで中央寄せ */
+        padding: 16px;
+      }
+      .topbar {
+        /*
+          【解説：Flexbox（フレックスボックス）】
+          display:flex にすると、子要素を横一列に並べる「並べ方の道具」が使える。
+          justify-content: space-between → 子を両端に寄せ、間を最大に空ける（タイトルと右上ボタンを左右に振り分け）。
+          align-items: center → 縦方向の中央でそろえる。
+        */
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+      }
+      h1 { font-size: 22px; margin: 8px 0; }
+      .icon-btn {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 20px;  /* 角を丸める。大きくすると丸ピル型に */
+        padding: 6px 12px;
+        cursor: pointer;      /* マウスを乗せると指マークになり「押せる」と伝わる */
+        font-size: 14px;
+        color: var(--fg);
+      }
+      .note { font-size: 13px; color: var(--muted); line-height: 1.6; }
+      .note a { color: var(--link); } /* 【解説】.note の中の <a> だけに当てる「子孫セレクタ」 */
+      .controls {
+        background: var(--card);
+        border: 1px solid var(--border);
+        border-radius: 8px;
+        padding: 16px;
+        display: flex;
+        flex-wrap: wrap;       /* 横に入りきらない子は次の行へ折り返す（スマホ対応） */
+        gap: 12px 20px;        /* 行間12px・列間20px */
+        align-items: flex-end; /* 各入力欄を下端でそろえる（ラベル高さが違っても底をそろえる） */
+      }
+      .field { display: flex; flex-direction: column; gap: 4px; } /* 縦並び（ラベル＋入力） */
+      .field.grow { flex: 1 1 220px; } /* 【解説】flex:伸縮率。余白を吸って伸びる（キーワード欄を広く） */
+      .field label { font-size: 12px; color: var(--muted); }
+      .field input {
+        padding: 6px 8px;
+        border: 1px solid var(--border);
+        border-radius: 4px;
+        font-size: 14px;
+        background: var(--card);
+        color: var(--fg);
+      }
+      button.search {
+        padding: 8px 22px;
+        font-size: 15px;
+        background: #2563eb;
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.search:disabled { background: #9db8ec; cursor: not-allowed; } /* 検索中(disabled)の見た目 */
+      .presets { margin: 10px 0 0; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+      .presets .lbl { font-size: 12px; color: var(--muted); }
+      .chip {
+        font-size: 13px;
+        padding: 4px 12px;
+        border-radius: 14px;
+        border: 1px solid var(--border);
+        background: var(--card);
+        color: var(--fg);
+        cursor: pointer;
+      }
+      .chip:hover { background: var(--hover); } /* 【解説】:hover はマウスが乗っている間だけ適用される擬似クラス */
+      .toggles { margin: 12px 0; display: flex; flex-wrap: wrap; gap: 16px; font-size: 13px; color: var(--fg); }
+      .toggles label { display: flex; align-items: center; gap: 5px; cursor: pointer; }
+      .status { margin: 12px 0; font-size: 14px; }
+      .status.error { color: var(--neg); } /* 【解説】.status かつ .error の両方を持つ要素に当たる（クラス併記） */
+      .badge-count {
+        display: inline-block; margin-left: 8px; padding: 1px 8px; border-radius: 10px;
+        background: var(--th); border: 1px solid var(--border); font-size: 12px;
+      }
+      .spinner { display: inline-block; animation: spin 1s linear infinite; } /* くるくる回るローディング */
+      /* 【解説】@keyframes でアニメーションの「変化の流れ」を定義。0deg→360degを1秒で無限ループ */
+      @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+      table { width: 100%; border-collapse: collapse; background: var(--card); font-size: 13px; }
+      th, td { border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }
+      /* 【解説】position:sticky + top:0 で、スクロールしても表ヘッダが上に貼り付いて残る */
+      th { background: var(--th); white-space: nowrap; position: sticky; top: 0; z-index: 1; }
+      td.nowrap { white-space: nowrap; } /* nowrap: 折り返さず1行で表示 */
+      td.center { text-align: center; }
+      /* 【解説】:nth-child(even) は「偶数番目の行」を選ぶ擬似クラス → 縞模様(ゼブラ)を作る */
+      tbody tr:nth-child(even) td { background: var(--even); }
+      tbody tr:hover td { background: var(--hover); } /* 行にマウスを乗せると色が変わる */
+      a { color: var(--link); }
+      /*
+        【解説：お気に入り行の強調】
+        JS側で各行に "fav-owned"（保有）/ "fav-watch"（ウォッチ）クラスを付ける。
+        そのクラスを持つ行だけ背景色＋左端のアクセント線で目立たせる。
+        td:first-child は行の最初のセル＝左端だけに線を引くため。
+      */
+      tbody tr.fav-owned td { background: var(--fav-owned-bg); }
+      tbody tr.fav-owned td:first-child { border-left: 3px solid var(--fav-owned-accent); }
+      tbody tr.fav-watch td { background: var(--fav-watch-bg); }
+      tbody tr.fav-watch td:first-child { border-left: 3px solid var(--fav-watch-accent); }
+      /* ポジ/ネガ・キーワードのハイライト（JSが表題の語を <span class="..."> で包む） */
+      .word-pos { color: var(--pos); font-weight: bold; }
+      .word-neg { color: var(--neg); font-weight: bold; }
+      .keyword-hit { background: var(--hl); border-radius: 2px; }
+      /* カテゴリバッジ（会社名の横に出す小ラベル）。カテゴリごとに配色を変える */
+      .badge {
+        display: inline-block; font-size: 11px; padding: 1px 6px; border-radius: 8px;
+        margin-left: 6px; white-space: nowrap; font-weight: 600;
+      }
+      .cat-own_yutai { background: #fde68a; color: #92400e; }
+      .cat-own_tsumitate { background: #bfdbfe; color: #1e40af; }
+      .cat-own_watch { background: #e9d5ff; color: #6b21a8; }
+      .cat-check { background: #fed7aa; color: #9a3412; }
+      .cat-interest { background: #d1d5db; color: #374151; }
+      /* 【解説】<details>/<summary> はJS不要でクリック開閉できるHTML標準の折り畳み部品 */
+      details.editor { margin-top: 24px; background: var(--card); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; }
+      details.editor summary { cursor: pointer; font-size: 14px; }
+      details.editor textarea {
+        width: 100%; height: 200px; margin-top: 10px; font-family: monospace; font-size: 12px;
+        background: var(--bg); color: var(--fg); border: 1px solid var(--border); border-radius: 4px; padding: 8px;
+        box-sizing: border-box; /* paddingを含めて幅100%に収める（はみ出し防止） */
+      }
+      .editor-actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; }
+      .editor-actions button { padding: 6px 14px; border-radius: 4px; border: 1px solid var(--border); background: var(--card); color: var(--fg); cursor: pointer; }
+      .editor-msg { font-size: 12px; color: var(--muted); }
+    </style>
+  </head>
+  <body>
+    <!--
+      【解説：ここからが template（画面の設計図）】
+      <div id="app"> の中身がVueの管理範囲。末尾の createApp(...).mount("#app") で結びつく。
+      この中では Vueの「ディレクティブ」（v-で始まる特別な属性）や {{ }} が使える。
+        {{ 式 }}     … データを文字として埋め込む（マスタッシュ構文）
+        v-model     … 入力欄と状態を「双方向」に同期（入力するとdataが変わる/dataを変えると入力欄も変わる）
+        v-if/v-else … 条件で表示/非表示を切り替える
+        v-for       … 配列をループして要素を繰り返し描画
+        :属性        … v-bind の省略形。属性値にJSの式を入れる（例 :class="..."）
+        @イベント    … v-on の省略形。クリック等のイベントでmethodを呼ぶ（例 @click="search"）
+    -->
+    <div id="app">
+      <div class="topbar">
+        <h1>📋 適時開示ウォッチャー（TDnet）</h1>
+        <!-- @click でボタン押下時に toggleDark() を呼ぶ。{{ }} 内の三項演算子で表示文言を出し分け -->
+        <button class="icon-btn" @click="toggleDark">
+          {{ darkMode ? '☀️ ライト' : '🌙 ダーク' }}
+        </button>
+      </div>
+      <p class="note">
+        東証の適時開示情報閲覧サービス(TDnet)から、指定期間・キーワードで開示を検索します。
+        保有・ウォッチ銘柄を強調表示し、内容のポジ/ネガを色分けします（保持期間は約31日）。<br />
+        ※ブラウザのCORS制約のため公開プロキシ(api.allorigins.win)経由で取得。
+        元のサービス：
+        <a href="https://www.release.tdnet.info/index.html" target="_blank" rel="noopener">適時開示情報閲覧サービス（TDnet）</a>
+      </p>
+
+      <div class="controls">
+        <div class="field grow">
+          <label>キーワード（スペース区切りで複数可・いずれか含む）</label>
+          <!--
+            v-model="keyword": この入力欄と data.keyword が連動。
+            @keyup.enter="search": Enterキーを離した瞬間に search() を実行（.enter は「Enterのときだけ」の修飾子）
+          -->
+          <input type="text" v-model="keyword" placeholder="例：優待 増配" @keyup.enter="search" />
+        </div>
+        <div class="field">
+          <label>開始日</label>
+          <!-- :max は v-bind:max の省略。終了日より後を選べないよう動的に上限を設定 -->
+          <input type="date" v-model="fromDate" :max="toDate" />
+        </div>
+        <div class="field">
+          <label>終了日</label>
+          <input type="date" v-model="toDate" :min="fromDate" :max="today" />
+        </div>
+        <!-- :disabled="loading" で検索中はボタンを無効化（二重実行防止）。文言も三項演算子で切替 -->
+        <button class="search" @click="search" :disabled="loading">
+          {{ loading ? '検索中…' : '検索' }}
+        </button>
+      </div>
+
+      <div class="presets">
+        <span class="lbl">プリセット：</span>
+        <!--
+          【解説：v-for】data.presets 配列を1件ずつ p として取り出しボタンを量産。
+          :key はVueが「どの要素がどれか」を見分けるための目印（リスト描画では必須のお作法）。
+        -->
+        <button class="chip" v-for="p in presets" :key="p.label" @click="applyPreset(p.value)">{{ p.label }}</button>
+      </div>
+
+      <div class="toggles">
+        <!-- チェックボックスもv-modelで真偽値(boolean)の状態と同期する -->
+        <label><input type="checkbox" v-model="favOnly" /> ⭐ お気に入りのみ表示</label>
+        <label><input type="checkbox" v-model="favTop" /> ⬆️ お気に入りを上部に集約</label>
+      </div>
+
+      <!-- :class="{ クラス名: 条件 }" → 条件がtrueのときだけそのクラスを付ける（エラー時だけ赤文字に） -->
+      <div class="status" :class="{ error: !!errorMessage }">
+        <!--
+          【解説：v-if / v-else-if】状態に応じて「読込中／エラー／結果サマリ」を出し分ける。
+          <template> は「画面に出ない入れ物」。複数要素をまとめてv-ifを掛けたいときに使う。
+        -->
+        <template v-if="loading">
+          <span class="spinner">🌀</span> {{ progress }}
+        </template>
+        <template v-else-if="errorMessage">⚠️ {{ errorMessage }}</template>
+        <template v-else-if="searched">
+          「{{ lastKeyword || '(全件)' }}」の検索結果：{{ results.length }} 件
+          <span class="badge-count">⭐ お気に入り {{ favHitCount }} 件</span>
+          <span class="badge-count">{{ fromDate }} 〜 {{ toDate }}</span>
+        </template>
+      </div>
+
+      <!-- 結果が1件以上ある時だけ表を描画（v-if）。中身は computed の displayedResults を回す -->
+      <table v-if="displayedResults.length">
+        <thead>
+          <tr>
+            <th class="center">判定</th>
+            <th class="nowrap">開示日</th>
+            <th class="nowrap">時刻</th>
+            <th class="nowrap">コード</th>
+            <th>会社名</th>
+            <th>表題</th>
+            <th class="nowrap">市場</th>
+          </tr>
+        </thead>
+        <tbody>
+          <!--
+            displayedResults を1行(r)ずつ描画。
+            :class="favClass(r)" で、お気に入り判定に応じた強調クラスを動的に付与。
+            :title=... はマウスを乗せた時のツールチップ文言。
+          -->
+          <tr v-for="(r, i) in displayedResults" :key="i" :class="favClass(r)">
+            <td class="center" :title="sentLabel(r.title)">{{ sentIcon(r.title) }}</td>
+            <td class="nowrap">{{ r.date }}</td>
+            <td class="nowrap">{{ r.time }}</td>
+            <td class="nowrap">{{ r.code }}</td>
+            <td class="nowrap">
+              {{ r.name }}
+              <!-- お気に入り銘柄ならカテゴリバッジを表示。:class でカテゴリ別の配色クラスを切替 -->
+              <span v-if="favOf(r.code)" class="badge" :class="'cat-' + favOf(r.code).cat">{{ catLabel(favOf(r.code).cat) }}</span>
+            </td>
+            <td>
+              <!--
+                【解説：v-html と注意点】
+                {{ }} はHTMLタグを「ただの文字」として安全に出すが、ここでは表題内の語を
+                <span>で色付けしたい。そのためHTMLとして解釈させる v-html を使う。
+                v-htmlは生HTMLを描画するためXSSの危険があるので、highlight()内で必ず
+                エスケープ（タグ無害化）してから色付けspanだけを足している（後述）。
+              -->
+              <a v-if="r.pdf" :href="r.pdf" target="_blank" rel="noopener" v-html="highlight(r.title)"></a>
+              <span v-else v-html="highlight(r.title)"></span>
+            </td>
+            <td class="nowrap">{{ r.place }}</td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 検索したが結果0件のときのメッセージ（&& で複数条件をすべて満たす時だけ表示） -->
+      <p class="note" v-if="searched && !loading && !displayedResults.length && !errorMessage">
+        該当する開示情報は見つかりませんでした。
+      </p>
+
+      <details class="editor">
+        <summary>⭐ お気に入り銘柄リストを編集（{{ watchlist.length }} 件）</summary>
+        <p class="note">
+          1行に <code>コード,銘柄名,カテゴリ</code> の形式で記入。カテゴリは
+          own_yutai / own_tsumitate / own_watch / check / interest のいずれか。
+          保存するとこのブラウザに記憶されます（localStorage）。
+        </p>
+        <textarea v-model="watchlistText" spellcheck="false"></textarea>
+        <div class="editor-actions">
+          <button @click="saveWatchlist">保存</button>
+          <button @click="resetWatchlist">初期値に戻す</button>
+          <span class="editor-msg">{{ watchlistMsg }}</span>
+        </div>
+      </details>
+    </div>
+
+    <script>
+      /*
+        【解説：ここからJavaScript（アプリの頭脳）】
+        分割代入(destructuring)で Vue から createApp だけを取り出す。
+        const … 再代入しない定数。let … 後で変わる変数。var は古い書き方なので基本使わない。
+      */
+      const { createApp } = Vue;
+
+      // 取得先の基準URLと、CORS回避用プロキシのURL（末尾に対象URLを連結して使う）
+      const TDNET_BASE = "https://www.release.tdnet.info/inbs/";
+      const PROXY = "https://api.allorigins.win/raw?url=";
+
+      /*
+        【解説：判定用の辞書】
+        表題に含まれていれば「ポジ/ネガ」と見なす単語のリスト（配列＝[]で囲んだ並び）。
+        ここを編集するだけで判定ルールを調整できる（データとロジックの分離という設計）。
+      */
+      const POS_WORDS = [
+        "新設", "導入", "開始", "拡充", "拡大", "増配", "復配", "上方修正",
+        "最高益", "自己株式の取得", "自己株式取得", "自社株買い", "株式分割",
+        "特別配当", "記念配当", "増額",
+      ];
+      const NEG_WORDS = [
+        "廃止", "中止", "取りやめ", "改悪", "縮小", "下方修正", "減配", "無配",
+        "株式併合", "上場廃止", "不適切", "訂正", "延期", "減額",
+      ];
+
+      /*
+        【解説：既定のお気に入り銘柄】
+        オブジェクト({ })の配列。各銘柄は code/name/cat の3つの「プロパティ」を持つ。
+        codeは4桁または英数字。TDnet側のコードは5桁(例 65710)なので、後で先頭4文字で照合する。
+      */
+      const DEFAULT_WATCHLIST = [
+        // 所持・買切・優待目当て
+        { code: "6571", name: "キュービーネットHLDGS", cat: "own_yutai" },
+        { code: "9887", name: "松屋フーズHLDGS", cat: "own_yutai" },
+        { code: "189A", name: "D&Mカンパニー", cat: "own_yutai" },
+        { code: "9434", name: "ソフトバンク", cat: "own_yutai" },
+        // 所持・積立
+        { code: "9432", name: "NTT", cat: "own_tsumitate" },
+        { code: "5401", name: "日本製鉄", cat: "own_tsumitate" },
+        { code: "5021", name: "コスモエネルギーHLDGS", cat: "own_tsumitate" },
+        { code: "2914", name: "日本たばこ産業", cat: "own_tsumitate" },
+        { code: "5444", name: "大和工業", cat: "own_tsumitate" },
+        { code: "8804", name: "東京建物", cat: "own_tsumitate" },
+        { code: "3288", name: "オープンハウスグループ", cat: "own_tsumitate" },
+        { code: "8830", name: "住友不動産", cat: "own_tsumitate" },
+        { code: "8802", name: "三菱地所", cat: "own_tsumitate" },
+        { code: "7974", name: "任天堂", cat: "own_tsumitate" },
+        { code: "3088", name: "マツキヨココカラ&カンパニー", cat: "own_tsumitate" },
+        // 所持・様子見
+        { code: "7453", name: "良品計画", cat: "own_watch" },
+        { code: "9766", name: "コナミグループ", cat: "own_watch" },
+        { code: "8306", name: "三菱UFJフィナンシャルG", cat: "own_watch" },
+        // 要チェック
+        { code: "9991", name: "ジェコス", cat: "check" },
+        { code: "9024", name: "西武ホールディングス", cat: "check" },
+        { code: "1605", name: "INPEX", cat: "check" },
+        { code: "285A", name: "キオクシアホールディングス", cat: "check" },
+        { code: "2702", name: "日本マクドナルドHLDG", cat: "check" },
+        { code: "1873", name: "日本ハウスHLDGS", cat: "check" },
+        { code: "3863", name: "日本製紙", cat: "check" },
+        { code: "9064", name: "ヤマトホールディングス", cat: "check" },
+        { code: "6082", name: "ライドオンエクスプレスHD", cat: "check" },
+        { code: "2594", name: "キーコーヒー", cat: "check" },
+        { code: "4665", name: "ダスキン", cat: "check" },
+        { code: "7550", name: "ゼンショーホールディングス", cat: "check" },
+        { code: "4911", name: "資生堂", cat: "check" },
+        { code: "3382", name: "セブン&アイ・HLDGS", cat: "check" },
+        { code: "9861", name: "吉野家ホールディングス", cat: "check" },
+        { code: "4755", name: "楽天グループ", cat: "check" },
+        { code: "6752", name: "パナソニックHD", cat: "check" },
+        { code: "9104", name: "商船三井", cat: "check" },
+        { code: "2269", name: "明治ホールディングス", cat: "check" },
+        { code: "7972", name: "イトーキ", cat: "check" },
+        { code: "2991", name: "ランドネット", cat: "check" },
+        // 興味分野
+        { code: "2371", name: "カカクコム", cat: "interest" },
+        { code: "3994", name: "マネーフォワード", cat: "interest" },
+        { code: "2413", name: "エムスリー", cat: "interest" },
+        { code: "4293", name: "セプテーニHLDGS", cat: "interest" },
+        { code: "4385", name: "メルカリ", cat: "interest" },
+        { code: "4477", name: "BASE", cat: "interest" },
+        { code: "4449", name: "ギフティ", cat: "interest" },
+      ];
+
+      // カテゴリの内部キー → 画面に出す日本語ラベルの対応表（オブジェクトを辞書として使う）
+      const CAT_LABEL = {
+        own_yutai: "優待",
+        own_tsumitate: "積立",
+        own_watch: "様子見",
+        check: "要check",
+        interest: "興味",
+      };
+      // 「保有」とみなすカテゴリ（強い強調にする）。includes で含まれるか判定する用
+      const OWNED_CATS = ["own_yutai", "own_tsumitate", "own_watch"];
+
+      /*
+        【解説：純粋な部品関数（ヘルパー）】
+        Vueの外に置いた、入力→出力だけの小さな関数群。状態に依存しないのでテスト・再利用しやすい。
+      */
+      // "YYYY-MM-DD"（日付input） → JSのDateオブジェクト。map(Number)で各部品を数値化
+      function parseDate(s) {
+        const [y, m, d] = s.split("-").map(Number); // 分割代入で y,m,d に取り出す
+        return new Date(y, m - 1, d);               // 月は0始まりなので-1
+      }
+      // Date → "YYYYMMDD"（TDnetのファイル名用）。padStartで2桁ゼロ埋め
+      function ymd(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}${m}${d}`; // 【解説】バッククォートのテンプレートリテラル。${}で変数を埋め込める
+      }
+      // Date → "YYYY-MM-DD"（画面表示・input用）
+      function iso(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+      // 全角/半角・大文字小文字の揺れを吸収して比較するための正規化（NFKCで全角英数→半角等）
+      function normalize(s) {
+        return (s || "").normalize("NFKC").toLowerCase();
+      }
+      // HTMLの特殊文字を無害化（< を &lt; 等に）。v-htmlに渡す前のXSS対策の要
+      function escapeHtml(s) {
+        return (s || "").replace(/[&<>"']/g, (c) => ({
+          "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+        })[c]);
+      }
+      // 正規表現の特殊文字をエスケープ（ユーザー入力語を安全に正規表現へ組み込むため）
+      function escapeRegExp(s) {
+        return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      }
+      // 指定ミリ秒だけ待つ（async/awaitで「少し待つ」を表現するための定番。リトライ間隔に使用）
+      const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+      /*
+        【解説：Vueアプリ本体】
+        createApp({...}) に「状態・計算・処理・ライフサイクル」をまとめたオブジェクトを渡し、
+        最後に .mount("#app") で画面の <div id="app"> に接続する。
+      */
+      createApp({
+        /*
+          data(): アプリの「状態」を返す関数。ここで返した各値がリアクティブになり、
+          値を書き換えると、それを使っている画面が自動で更新される。
+          （関数で返すのは、各画面インスタンスが独立した状態を持てるようにするVueの作法）
+        */
+        data() {
+          const now = new Date();
+          const from = new Date(now);
+          from.setDate(from.getDate() - 7); // 既定の開始日＝7日前
+          return {
+            keyword: "優待",        // 検索キーワード（入力欄とv-modelで連動）
+            fromDate: iso(from),    // 開始日
+            toDate: iso(now),       // 終了日
+            today: iso(now),        // 「今日」（終了日の上限に使用）
+            loading: false,         // 取得中フラグ（trueの間スピナー表示＆ボタン無効）
+            searched: false,        // 一度でも検索したか（初期表示とメッセージ制御用）
+            progress: "",           // 進捗テキスト
+            errorMessage: "",       // エラー文言（空なら正常）
+            lastKeyword: "",        // 直近に検索した語（表示用）
+            lastKeywords: [],       // 直近キーワードの配列（ハイライト用）
+            results: [],            // 検索結果（行データの配列）← これが主役の状態
+            // --- カスタマイズ用の状態 ---
+            darkMode: false,        // ダークモードか
+            favOnly: false,         // お気に入りのみ表示するか
+            favTop: true,           // お気に入りを上部に集めるか
+            watchlist: DEFAULT_WATCHLIST.slice(), // お気に入り銘柄（sliceで配列を複製＝既定を壊さない）
+            watchlistText: "",      // 編集用テキストエリアの中身
+            watchlistMsg: "",       // 保存結果のメッセージ
+            presets: [              // プリセットボタンの定義（labelを表示、valueを入力欄へ）
+              { label: "優待", value: "優待" },
+              { label: "増配・配当", value: "増配 復配 配当" },
+              { label: "自社株買い", value: "自己株式の取得 自社株買い" },
+              { label: "株式分割", value: "株式分割" },
+              { label: "業績修正", value: "上方修正 下方修正 業績予想" },
+              { label: "TOB・M&A", value: "公開買付 TOB 株式交換 合併" },
+            ],
+          };
+        },
+
+        /*
+          computed: 「状態から計算して導く値」。中で使った状態(this.xxx)が変わった時だけ再計算され、
+          変わらなければキャッシュした結果を返す（効率的）。methodsは呼ぶ度に毎回実行される点が違う。
+          テンプレートからは this を付けずプロパティのように使える（例：displayedResults.length）。
+        */
+        computed: {
+          // 表示用リスト：お気に入り絞り込み＆上部集約を results に適用した結果
+          displayedResults() {
+            let rows = this.results;
+            // filter: 条件に合う要素だけ残した新配列を作る（元は壊さない）
+            if (this.favOnly) rows = rows.filter((r) => this.favOf(r.code));
+            if (this.favTop) {
+              // slice()で複製してからsort（sortは元配列を破壊するため、resultsを汚さないよう複製）
+              rows = rows.slice().sort((a, b) => {
+                const fa = this.favOf(a.code) ? 0 : 1; // お気に入りは0、そうでなければ1
+                const fb = this.favOf(b.code) ? 0 : 1;
+                return fa - fb; // 0が前に来る＝お気に入りが上。JSのsortは安定なので同順位は元の並び維持
+              });
+            }
+            return rows;
+          },
+          // お気に入りに該当する結果の件数（サマリ表示用）
+          favHitCount() {
+            return this.results.filter((r) => this.favOf(r.code)).length;
+          },
+          /*
+            ハイライト対象語（ポジ/ネガ＋検索キーワード）を1つの正規表現にまとめる。
+            Map: 「キー→値」の対応表。ここでは「単語→付与するCSSクラスの集合(Set)」を作る。
+            Set: 重複しない集合（同じクラスを二重に付けない）。
+          */
+          highlightConfig() {
+            const map = new Map();
+            const add = (term, cls) => {
+              if (!term) return;
+              const set = map.get(term) || new Set();
+              set.add(cls);
+              map.set(term, set);
+            };
+            POS_WORDS.forEach((t) => add(t, "word-pos"));
+            NEG_WORDS.forEach((t) => add(t, "word-neg"));
+            this.lastKeywords.forEach((t) => add(t, "keyword-hit"));
+            // 長い語から先にマッチさせるため長さ降順に並べる（部分一致の取りこぼし防止）
+            const terms = [...map.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
+            if (!terms.length) return null;
+            // 「語A|語B|語C」という形の正規表現を組み立て、g(グローバル＝全部)で全一致を対象に
+            const re = new RegExp("(" + terms.map(escapeRegExp).join("|") + ")", "g");
+            return { re, map };
+          },
+        },
+
+        /*
+          watch: 特定の状態を「見張り」、変化したら処理を走らせる仕組み。
+          ここでは darkMode が変わるたび、body に "dark" クラスを付け外しする（CSS変数の切替）。
+        */
+        watch: {
+          darkMode(v) {
+            document.body.classList.toggle("dark", v); // 第2引数がtrueなら付与/falseなら除去
+          },
+        },
+
+        /*
+          mounted: 画面がDOMに描画され終わった直後に1回だけ呼ばれる「ライフサイクルフック」。
+          ここで保存済み設定（localStorage）を読み戻して初期状態に反映する。
+        */
+        mounted() {
+          try {
+            // localStorage: ブラウザに文字列を永続保存する箱。JSONで配列を文字列化して出し入れする
+            const saved = localStorage.getItem("tdnet_watchlist");
+            if (saved) this.watchlist = JSON.parse(saved); // 文字列→オブジェクトに復元
+          } catch (e) { /* 壊れていたら既定を使う（try/catchで例外を握りつぶす） */ }
+          this.watchlistText = this.serializeWatchlist(this.watchlist);
+          this.darkMode = localStorage.getItem("tdnet_dark") === "1";
+          document.body.classList.toggle("dark", this.darkMode); // 初期反映（watchは初回は発火しないため）
+        },
+
+        /*
+          methods: ボタン押下などから呼ぶ処理（関数）の置き場。
+          関数内では this.xxx で data/computed/他のmethodにアクセスできる。
+        */
+        methods: {
+          // ---- お気に入り関連 ----
+          // コードが登録銘柄か調べる。TDnetの5桁コードの先頭4文字で照合。見つかればその銘柄、無ければnull
+          favOf(code) {
+            const c = (code || "").slice(0, 4); // slice(0,4)＝先頭4文字を切り出す
+            return this.watchlist.find((w) => w.code === c) || null; // find: 最初に条件を満たす要素
+          },
+          // 行に付ける強調クラスを決める（保有→fav-owned / ウォッチ→fav-watch / 非該当→空）
+          favClass(row) {
+            const f = this.favOf(row.code);
+            if (!f) return "";
+            return OWNED_CATS.includes(f.cat) ? "fav-owned" : "fav-watch";
+          },
+          catLabel(cat) {
+            return CAT_LABEL[cat] || cat; // 対応表に無ければキーをそのまま表示
+          },
+          // 銘柄配列 → テキストエリア用の「1行1銘柄」文字列に変換
+          serializeWatchlist(wl) {
+            return wl.map((w) => `${w.code},${w.name},${w.cat}`).join("\n");
+          },
+          // テキストエリアの文字列 → 銘柄配列に変換（保存時に使う、上の逆向き）
+          parseWatchlist(text) {
+            return text
+              .split("\n")              // 改行で行に分割
+              .map((l) => l.trim())     // 各行の前後空白を除去
+              .filter(Boolean)          // 空行を除外（""はfalsyなので落ちる）
+              .map((l) => {
+                const [code, name, cat] = l.split(",").map((s) => (s || "").trim());
+                return { code, name: name || "", cat: cat || "interest" };
+              })
+              .filter((w) => w.code);   // コード無し行は無効として除外
+          },
+          // 編集内容を保存（状態更新＋localStorageへ永続化）
+          saveWatchlist() {
+            this.watchlist = this.parseWatchlist(this.watchlistText);
+            localStorage.setItem("tdnet_watchlist", JSON.stringify(this.watchlist));
+            this.watchlistMsg = `保存しました（${this.watchlist.length} 件）`;
+          },
+          // 既定リストに戻す（保存も消す）
+          resetWatchlist() {
+            this.watchlist = DEFAULT_WATCHLIST.slice();
+            this.watchlistText = this.serializeWatchlist(this.watchlist);
+            localStorage.removeItem("tdnet_watchlist");
+            this.watchlistMsg = "初期値に戻しました";
+          },
+
+          // ---- 見た目 ----
+          toggleDark() {
+            this.darkMode = !this.darkMode; // 真偽を反転。watchが拾ってbodyクラスを切り替える
+            localStorage.setItem("tdnet_dark", this.darkMode ? "1" : "0");
+          },
+          applyPreset(value) {
+            this.keyword = value; // プリセットの語を入力欄へ流し込む（あとはユーザーが検索を押す）
+          },
+
+          // ---- ポジ/ネガ判定・ハイライト ----
+          // 表題の語からポジ/ネガ/中立を判定。ネガを優先（注意喚起を見落とさないため）
+          classify(title) {
+            for (const w of NEG_WORDS) if (title.includes(w)) return "neg";
+            for (const w of POS_WORDS) if (title.includes(w)) return "pos";
+            return "neutral";
+          },
+          sentIcon(title) {
+            // 判定結果(キー)で絵文字を引く。{...}[key] は「オブジェクトを辞書として即席に引く」書き方
+            return { pos: "🟢", neg: "🔴", neutral: "⚪" }[this.classify(title)];
+          },
+          sentLabel(title) {
+            return { pos: "ポジティブ", neg: "ネガティブ／注意", neutral: "中立" }[this.classify(title)];
+          },
+          // 表題内のポジ/ネガ語・検索語を <span class="..."> で包んで色付けしたHTML文字列を返す
+          highlight(title) {
+            const esc = escapeHtml(title);         // ①まずHTMLを無害化（XSS対策）
+            const cfg = this.highlightConfig;      // ②対象語の正規表現＋クラス表（computedからキャッシュ取得）
+            if (!cfg) return esc;
+            // ③一致した語を、その語に紐づくクラス付きspanへ置換（mは一致した文字列）
+            return esc.replace(cfg.re, (m) => {
+              const cls = [...(cfg.map.get(m) || [])].join(" "); // Set→配列→スペース区切り文字列
+              return `<span class="${cls}">${m}</span>`;
+            });
+          },
+
+          // ---- データ取得 ----
+          /*
+            async/await: 非同期処理（ネット通信のように「待ち」が発生する処理）を、
+            あたかも上から順に進むように書ける仕組み。await は「結果が返るまで待つ」。
+            ここではプロキシ経由でURLを取得し、失敗(408等)なら少し待って最大3回試す。
+          */
+          async fetchViaProxy(url) {
+            const target = PROXY + encodeURIComponent(url); // 対象URLをパラメータとして安全に連結
+            let lastErr;
+            for (let attempt = 0; attempt < 3; attempt++) {
+              try {
+                const res = await fetch(target);   // fetch: ネット取得。Promiseを返すのでawaitで待つ
+                if (res.ok) return await res.text(); // 成功なら本文(テキスト)を返して終了
+                lastErr = new Error("HTTP " + res.status);
+              } catch (e) {
+                lastErr = e; // 通信自体が失敗した場合
+              }
+              await sleep(400 * (attempt + 1)); // 0.4秒→0.8秒と間隔を空けて再試行
+            }
+            throw lastErr || new Error("取得失敗"); // 3回ダメなら例外を投げる（呼び出し側でcatch）
+          },
+
+          // 1ページ分のHTML文字列から、開示行の配列を取り出す
+          parseRows(html, dateLabel) {
+            // DOMParser: HTML文字列を本物のDOM(要素ツリー)に変換する標準API。
+            // これで querySelector など、普通のDOM操作でデータを抜ける（正規表現より堅牢）。
+            const doc = new DOMParser().parseFromString(html, "text/html");
+            const table = doc.querySelector("#main-list-table"); // 一覧テーブルを探す
+            if (!table) return []; // 休日など中身が無い日は空配列
+            const rows = [];
+            table.querySelectorAll("tr").forEach((tr) => {
+              const titleCell = tr.querySelector("td.kjTitle");
+              if (!titleCell) return; // 表題セルが無い行(ヘッダ等)はスキップ
+              const link = titleCell.querySelector("a");
+              const href = link ? link.getAttribute("href") : "";
+              rows.push({
+                date: dateLabel,
+                // ?. は「あれば値、無ければundefined」の安全アクセス(オプショナルチェーン)。|| "" で空文字に
+                time: (tr.querySelector("td.kjTime")?.textContent || "").trim(),
+                code: (tr.querySelector("td.kjCode")?.textContent || "").trim(),
+                name: (tr.querySelector("td.kjName")?.textContent || "").trim(),
+                title: (titleCell.textContent || "").trim(),
+                pdf: href ? TDNET_BASE + href : "", // 相対リンク→絶対URLへ
+                place: (tr.querySelector("td.kjPlace")?.textContent || "").trim(),
+              });
+            });
+            return rows;
+          },
+
+          /*
+            検索の本体。期間を1日ずつ巡り、各日のページを取得→解析→キーワード絞り込み→results へ。
+            状態(loading/results 等)を更新するたび、画面はVueが自動で同期してくれる。
+          */
+          async search() {
+            if (this.loading) return; // 多重実行ガード
+            // キーワードを区切り（空白・カンマ・読点）で分割して複数語に。OR検索に使う
+            const rawKeywords = this.keyword
+              .split(/[\s,、，]+/)
+              .map((s) => s.trim())
+              .filter(Boolean);
+            const normKeywords = rawKeywords.map(normalize); // 比較用に正規化したもの
+
+            // 検索開始：状態を初期化（これらの代入で画面も即リセットされる）
+            this.loading = true;
+            this.searched = true;
+            this.errorMessage = "";
+            this.results = [];
+            this.lastKeyword = this.keyword.trim();
+            this.lastKeywords = rawKeywords; // ハイライトは元の表記で行う
+
+            const start = parseDate(this.fromDate);
+            const end = parseDate(this.toDate);
+            const collected = []; // 一旦ここに溜めて、最後にまとめて results へ入れる
+            let anyError = false;
+
+            try {
+              // 開始日から終了日まで1日ずつループ（dを1日進めながら回す）
+              for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+                const dateStr = ymd(d);     // ファイル名用 YYYYMMDD
+                const dateLabel = iso(d);   // 表示用 YYYY-MM-DD
+                this.progress = `${dateLabel} を取得中…`;
+
+                // まず1ページ目を取得。失敗したらその日は飛ばす
+                let firstHtml;
+                try {
+                  firstHtml = await this.fetchViaProxy(`${TDNET_BASE}I_list_001_${dateStr}.html`);
+                } catch (e) {
+                  anyError = true;
+                  continue; // 次の日へ
+                }
+
+                // 「全N件」表記から総数を読み、100件/ページなので必要ページ数を計算
+                const m = firstHtml.match(/全([\d,]+)件/);
+                const total = m ? parseInt(m[1].replace(/,/g, ""), 10) : 0;
+                const pageCount = total > 0 ? Math.ceil(total / 100) : 1;
+
+                // 2ページ目以降も取得して全ページ分のHTMLを集める
+                const htmls = [firstHtml];
+                for (let p = 2; p <= pageCount; p++) {
+                  const pageNo = String(p).padStart(3, "0"); // 002, 003 ...
+                  this.progress = `${dateLabel} を取得中…（${p}/${pageCount}ページ）`;
+                  try {
+                    htmls.push(await this.fetchViaProxy(`${TDNET_BASE}I_list_${pageNo}_${dateStr}.html`));
+                  } catch (e) {
+                    anyError = true;
+                  }
+                }
+
+                // 各ページを解析し、キーワード（OR）に一致する行だけ集める
+                for (const html of htmls) {
+                  for (const row of this.parseRows(html, dateLabel)) {
+                    const t = normalize(row.title);
+                    // some: いずれかの語が含まれればtrue。語が無指定なら全件通す
+                    if (!normKeywords.length || normKeywords.some((k) => t.includes(k))) {
+                      collected.push(row);
+                    }
+                  }
+                }
+              }
+
+              // 新しい開示が上に来るよう「日付＋時刻」の文字列で降順ソート
+              collected.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
+              this.results = collected; // ← ここで状態確定。表が一気に描画される
+
+              // 1件も取れずエラーもあった＝おそらくプロキシ不調
+              if (!this.results.length && anyError) {
+                this.errorMessage =
+                  "一部または全部の取得に失敗しました。プロキシが混雑している可能性があります。少し待って再検索してください。";
+              }
+            } catch (e) {
+              this.errorMessage = "検索中にエラーが発生しました：" + e.message;
+            } finally {
+              // finally: 成功でも失敗でも最後に必ず実行。後片付け（取得中フラグを下ろす）に最適
+              this.loading = false;
+              this.progress = "";
+            }
+          },
+        },
+      }).mount("#app"); // 組み立てたアプリを画面の #app に接続して起動
+    </script>
+  </body>
+</html>
