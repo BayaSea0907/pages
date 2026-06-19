@@ -47,10 +47,8 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <!-- 【解説】viewport: スマホでも適切な拡大率で表示するためのお約束（レスポンシブの土台） -->
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>適時開示ウォッチャー（TDnet）</title>
-    <!-- 【解説】Vue本体をCDNから読み込む。これで window.Vue が使えるようになる（ビルド不要版） -->
     <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
     <style>
       /*
@@ -127,15 +125,7 @@
         gap: 12px;
       }
       h1 { font-size: 22px; margin: 8px 0; }
-      .icon-btn {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 20px;  /* 角を丸める。大きくすると丸ピル型に */
-        padding: 6px 12px;
-        cursor: pointer;      /* マウスを乗せると指マークになり「押せる」と伝わる */
-        font-size: 14px;
-        color: var(--fg);
-      }
+
       .note { font-size: 13px; color: var(--muted); line-height: 1.6; }
       .note a { color: var(--link); } /* 【解説】.note の中の <a> だけに当てる「子孫セレクタ」 */
       .controls {
@@ -254,10 +244,6 @@
     <div id="app">
       <div class="topbar">
         <h1>📋 適時開示ウォッチャー（TDnet）</h1>
-        <!-- @click でボタン押下時に toggleDark() を呼ぶ。{{ }} 内の三項演算子で表示文言を出し分け -->
-        <button class="icon-btn" @click="toggleDark">
-          {{ darkMode ? '☀️ ライト' : '🌙 ダーク' }}
-        </button>
       </div>
       <p class="note">
         東証の適時開示情報閲覧サービス(TDnet)から、指定期間・キーワードで開示を検索します。
@@ -387,6 +373,10 @@
           <span class="editor-msg">{{ watchlistMsg }}</span>
         </div>
       </details>
+
+      <p>test</p>
+      <input type="text" name="testInput" v-model="testInput" />
+      <p  v-if="testInput">入力値: {{ testInput }}</p>
     </div>
 
     <script>
@@ -395,7 +385,16 @@
         分割代入(destructuring)で Vue から createApp だけを取り出す。
         const … 再代入しない定数。let … 後で変わる変数。var は古い書き方なので基本使わない。
       */
-      const { createApp } = Vue;
+      /*
+        【解説：Options API → Composition API への変換ポイント】
+        ① ref()      … data() の各値を ref() で包む。JS内は .value でアクセス、テンプレートは自動解除
+        ② computed() … computed:{} のブロックを computed(()=>{}) の関数呼び出しへ
+        ③ watch()    … watch:{} のブロックを watch(対象ref, コールバック) へ
+        ④ onMounted()… mounted(){ } を onMounted(()=>{ }) へ
+        ⑤ this 不要 … setup()内は this を使わず変数・関数を直接参照
+        ⑥ return    … テンプレートで使うものを setup() の末尾で return する
+      */
+      const { createApp, ref, computed, watch, onMounted } = Vue;
 
       // 取得先の基準URLと、CORS回避用プロキシのURL（末尾に対象URLを連結して使う）
       const TDNET_BASE = "https://www.release.tdnet.info/inbs/";
@@ -526,82 +525,66 @@
       // 指定ミリ秒だけ待つ（async/awaitで「少し待つ」を表現するための定番。リトライ間隔に使用）
       const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-      /*
-        【解説：Vueアプリ本体】
-        createApp({...}) に「状態・計算・処理・ライフサイクル」をまとめたオブジェクトを渡し、
-        最後に .mount("#app") で画面の <div id="app"> に接続する。
-      */
       createApp({
         /*
-          data(): アプリの「状態」を返す関数。ここで返した各値がリアクティブになり、
-          値を書き換えると、それを使っている画面が自動で更新される。
-          （関数で返すのは、各画面インスタンスが独立した状態を持てるようにするVueの作法）
+          【解説：setup()関数】
+          Composition APIの入口。Options APIのdata/computed/watch/mounted/methodsを
+          すべてこの1つの関数に書く。最後にreturnしたものだけテンプレートから見える。
         */
-        data() {
+        setup() {
+          // ---- 状態（Options APIのdata()に相当） ----
+          // ref()で包むとリアクティブになる。JS内は .value でアクセス、テンプレートは自動解除
           const now = new Date();
           const from = new Date(now);
-          from.setDate(from.getDate() - 7); // 既定の開始日＝7日前
-          return {
-            keyword: "優待",        // 検索キーワード（入力欄とv-modelで連動）
-            fromDate: iso(from),    // 開始日
-            toDate: iso(now),       // 終了日
-            today: iso(now),        // 「今日」（終了日の上限に使用）
-            loading: false,         // 取得中フラグ（trueの間スピナー表示＆ボタン無効）
-            searched: false,        // 一度でも検索したか（初期表示とメッセージ制御用）
-            progress: "",           // 進捗テキスト
-            errorMessage: "",       // エラー文言（空なら正常）
-            lastKeyword: "",        // 直近に検索した語（表示用）
-            lastKeywords: [],       // 直近キーワードの配列（ハイライト用）
-            results: [],            // 検索結果（行データの配列）← これが主役の状態
-            // --- カスタマイズ用の状態 ---
-            darkMode: false,        // ダークモードか
-            favOnly: false,         // お気に入りのみ表示するか
-            favTop: true,           // お気に入りを上部に集めるか
-            watchlist: DEFAULT_WATCHLIST.slice(), // お気に入り銘柄（sliceで配列を複製＝既定を壊さない）
-            watchlistText: "",      // 編集用テキストエリアの中身
-            watchlistMsg: "",       // 保存結果のメッセージ
-            presets: [              // プリセットボタンの定義（labelを表示、valueを入力欄へ）
-              { label: "優待", value: "優待" },
-              { label: "増配・配当", value: "増配 復配 配当" },
-              { label: "自社株買い", value: "自己株式の取得 自社株買い" },
-              { label: "株式分割", value: "株式分割" },
-              { label: "業績修正", value: "上方修正 下方修正 業績予想" },
-              { label: "TOB・M&A", value: "公開買付 TOB 株式交換 合併" },
-            ],
-          };
-        },
+          from.setDate(from.getDate() - 7);
 
-        /*
-          computed: 「状態から計算して導く値」。中で使った状態(this.xxx)が変わった時だけ再計算され、
-          変わらなければキャッシュした結果を返す（効率的）。methodsは呼ぶ度に毎回実行される点が違う。
-          テンプレートからは this を付けずプロパティのように使える（例：displayedResults.length）。
-        */
-        computed: {
-          // 表示用リスト：お気に入り絞り込み＆上部集約を results に適用した結果
-          displayedResults() {
-            let rows = this.results;
-            // filter: 条件に合う要素だけ残した新配列を作る（元は壊さない）
-            if (this.favOnly) rows = rows.filter((r) => this.favOf(r.code));
-            if (this.favTop) {
-              // slice()で複製してからsort（sortは元配列を破壊するため、resultsを汚さないよう複製）
+          const testInput    = ref("");
+          const keyword      = ref("優待");
+          const fromDate     = ref(iso(from));
+          const toDate       = ref(iso(now));
+          const today        = ref(iso(now));
+          const loading      = ref(false);
+          const searched     = ref(false);
+          const progress     = ref("");
+          const errorMessage = ref("");
+          const lastKeyword  = ref("");
+          const lastKeywords = ref([]);
+          const results      = ref([]);
+          const darkMode     = ref(false);
+          const favOnly      = ref(false);
+          const favTop       = ref(true);
+          const watchlist    = ref(DEFAULT_WATCHLIST.slice());
+          const watchlistText = ref("");
+          const watchlistMsg  = ref("");
+          const presets = ref([
+            { label: "優待", value: "優待" },
+            { label: "増配・配当", value: "増配 復配 配当" },
+            { label: "自社株買い", value: "自己株式の取得 自社株買い" },
+            { label: "株式分割", value: "株式分割" },
+            { label: "業績修正", value: "上方修正 下方修正 業績予想" },
+            { label: "TOB・M&A", value: "公開買付 TOB 株式交換 合併" },
+          ]);
+
+          // ---- 計算値（Options APIのcomputed:{}に相当） ----
+          // computed(()=>{}) に変換。内部で参照したrefが変わった時だけ再計算される
+          const displayedResults = computed(() => {
+            let rows = results.value;
+            if (favOnly.value) rows = rows.filter((r) => favOf(r.code));
+            if (favTop.value) {
               rows = rows.slice().sort((a, b) => {
-                const fa = this.favOf(a.code) ? 0 : 1; // お気に入りは0、そうでなければ1
-                const fb = this.favOf(b.code) ? 0 : 1;
-                return fa - fb; // 0が前に来る＝お気に入りが上。JSのsortは安定なので同順位は元の並び維持
+                const fa = favOf(a.code) ? 0 : 1;
+                const fb = favOf(b.code) ? 0 : 1;
+                return fa - fb;
               });
             }
             return rows;
-          },
-          // お気に入りに該当する結果の件数（サマリ表示用）
-          favHitCount() {
-            return this.results.filter((r) => this.favOf(r.code)).length;
-          },
-          /*
-            ハイライト対象語（ポジ/ネガ＋検索キーワード）を1つの正規表現にまとめる。
-            Map: 「キー→値」の対応表。ここでは「単語→付与するCSSクラスの集合(Set)」を作る。
-            Set: 重複しない集合（同じクラスを二重に付けない）。
-          */
-          highlightConfig() {
+          });
+
+          const favHitCount = computed(() =>
+            results.value.filter((r) => favOf(r.code)).length
+          );
+
+          const highlightConfig = computed(() => {
             const map = new Map();
             const add = (term, cls) => {
               if (!term) return;
@@ -611,239 +594,186 @@
             };
             POS_WORDS.forEach((t) => add(t, "word-pos"));
             NEG_WORDS.forEach((t) => add(t, "word-neg"));
-            this.lastKeywords.forEach((t) => add(t, "keyword-hit"));
-            // 長い語から先にマッチさせるため長さ降順に並べる（部分一致の取りこぼし防止）
+            lastKeywords.value.forEach((t) => add(t, "keyword-hit"));
             const terms = [...map.keys()].filter(Boolean).sort((a, b) => b.length - a.length);
             if (!terms.length) return null;
-            // 「語A|語B|語C」という形の正規表現を組み立て、g(グローバル＝全部)で全一致を対象に
             const re = new RegExp("(" + terms.map(escapeRegExp).join("|") + ")", "g");
             return { re, map };
-          },
-        },
+          });
 
-        /*
-          watch: 特定の状態を「見張り」、変化したら処理を走らせる仕組み。
-          ここでは darkMode が変わるたび、body に "dark" クラスを付け外しする（CSS変数の切替）。
-        */
-        watch: {
-          darkMode(v) {
-            document.body.classList.toggle("dark", v); // 第2引数がtrueなら付与/falseなら除去
-          },
-        },
+          // ---- 監視（Options APIのwatch:{}に相当） ----
+          // watch(監視対象のref, コールバック) に変換。this不要
+          watch(darkMode, (v) => {
+            document.body.classList.toggle("dark", v);
+          });
 
-        /*
-          mounted: 画面がDOMに描画され終わった直後に1回だけ呼ばれる「ライフサイクルフック」。
-          ここで保存済み設定（localStorage）を読み戻して初期状態に反映する。
-        */
-        mounted() {
-          try {
-            // localStorage: ブラウザに文字列を永続保存する箱。JSONで配列を文字列化して出し入れする
-            const saved = localStorage.getItem("tdnet_watchlist");
-            if (saved) this.watchlist = JSON.parse(saved); // 文字列→オブジェクトに復元
-          } catch (e) { /* 壊れていたら既定を使う（try/catchで例外を握りつぶす） */ }
-          this.watchlistText = this.serializeWatchlist(this.watchlist);
-          this.darkMode = localStorage.getItem("tdnet_dark") === "1";
-          document.body.classList.toggle("dark", this.darkMode); // 初期反映（watchは初回は発火しないため）
-        },
+          // ---- ライフサイクル（Options APIのmounted()に相当） ----
+          onMounted(() => {
+            try {
+              const saved = localStorage.getItem("tdnet_watchlist");
+              if (saved) watchlist.value = JSON.parse(saved);
+            } catch (e) { /* 壊れていたら既定を使う */ }
+            watchlistText.value = serializeWatchlist(watchlist.value);
+            darkMode.value = localStorage.getItem("tdnet_dark") === "1";
+            document.body.classList.toggle("dark", darkMode.value);
+          });
 
-        /*
-          methods: ボタン押下などから呼ぶ処理（関数）の置き場。
-          関数内では this.xxx で data/computed/他のmethodにアクセスできる。
-        */
-        methods: {
-          // ---- お気に入り関連 ----
-          // コードが登録銘柄か調べる。TDnetの5桁コードの先頭4文字で照合。見つかればその銘柄、無ければnull
-          favOf(code) {
-            const c = (code || "").slice(0, 4); // slice(0,4)＝先頭4文字を切り出す
-            return this.watchlist.find((w) => w.code === c) || null; // find: 最初に条件を満たす要素
-          },
-          // 行に付ける強調クラスを決める（保有→fav-owned / ウォッチ→fav-watch / 非該当→空）
-          favClass(row) {
-            const f = this.favOf(row.code);
+          // ---- 関数群（Options APIのmethods:{}に相当） ----
+          // setup()内のただの関数。thisなし、refには .value でアクセス
+          function favOf(code) {
+            const c = (code || "").slice(0, 4);
+            return watchlist.value.find((w) => w.code === c) || null;
+          }
+          function favClass(row) {
+            const f = favOf(row.code);
             if (!f) return "";
             return OWNED_CATS.includes(f.cat) ? "fav-owned" : "fav-watch";
-          },
-          catLabel(cat) {
-            return CAT_LABEL[cat] || cat; // 対応表に無ければキーをそのまま表示
-          },
-          // 銘柄配列 → テキストエリア用の「1行1銘柄」文字列に変換
-          serializeWatchlist(wl) {
+          }
+          function catLabel(cat) {
+            return CAT_LABEL[cat] || cat;
+          }
+          function serializeWatchlist(wl) {
             return wl.map((w) => `${w.code},${w.name},${w.cat}`).join("\n");
-          },
-          // テキストエリアの文字列 → 銘柄配列に変換（保存時に使う、上の逆向き）
-          parseWatchlist(text) {
+          }
+          function parseWatchlist(text) {
             return text
-              .split("\n")              // 改行で行に分割
-              .map((l) => l.trim())     // 各行の前後空白を除去
-              .filter(Boolean)          // 空行を除外（""はfalsyなので落ちる）
+              .split("\n")
+              .map((l) => l.trim())
+              .filter(Boolean)
               .map((l) => {
                 const [code, name, cat] = l.split(",").map((s) => (s || "").trim());
                 return { code, name: name || "", cat: cat || "interest" };
               })
-              .filter((w) => w.code);   // コード無し行は無効として除外
-          },
-          // 編集内容を保存（状態更新＋localStorageへ永続化）
-          saveWatchlist() {
-            this.watchlist = this.parseWatchlist(this.watchlistText);
-            localStorage.setItem("tdnet_watchlist", JSON.stringify(this.watchlist));
-            this.watchlistMsg = `保存しました（${this.watchlist.length} 件）`;
-          },
-          // 既定リストに戻す（保存も消す）
-          resetWatchlist() {
-            this.watchlist = DEFAULT_WATCHLIST.slice();
-            this.watchlistText = this.serializeWatchlist(this.watchlist);
+              .filter((w) => w.code);
+          }
+          function saveWatchlist() {
+            watchlist.value = parseWatchlist(watchlistText.value);
+            localStorage.setItem("tdnet_watchlist", JSON.stringify(watchlist.value));
+            watchlistMsg.value = `保存しました（${watchlist.value.length} 件）`;
+          }
+          function resetWatchlist() {
+            watchlist.value = DEFAULT_WATCHLIST.slice();
+            watchlistText.value = serializeWatchlist(watchlist.value);
             localStorage.removeItem("tdnet_watchlist");
-            this.watchlistMsg = "初期値に戻しました";
-          },
-
-          // ---- 見た目 ----
-          toggleDark() {
-            this.darkMode = !this.darkMode; // 真偽を反転。watchが拾ってbodyクラスを切り替える
-            localStorage.setItem("tdnet_dark", this.darkMode ? "1" : "0");
-          },
-          applyPreset(value) {
-            this.keyword = value; // プリセットの語を入力欄へ流し込む（あとはユーザーが検索を押す）
-          },
-
-          // ---- ポジ/ネガ判定・ハイライト ----
-          // 表題の語からポジ/ネガ/中立を判定。ネガを優先（注意喚起を見落とさないため）
-          classify(title) {
+            watchlistMsg.value = "初期値に戻しました";
+          }
+          function toggleDark() {
+            darkMode.value = !darkMode.value; // 真偽を反転。watchが拾ってbodyクラスを切り替える
+            localStorage.setItem("tdnet_dark", darkMode.value ? "1" : "0");
+          }
+          function applyPreset(value) {
+            keyword.value = value;
+          }
+          function classify(title) {
             for (const w of NEG_WORDS) if (title.includes(w)) return "neg";
             for (const w of POS_WORDS) if (title.includes(w)) return "pos";
             return "neutral";
-          },
-          sentIcon(title) {
-            // 判定結果(キー)で絵文字を引く。{...}[key] は「オブジェクトを辞書として即席に引く」書き方
-            return { pos: "🟢", neg: "🔴", neutral: "⚪" }[this.classify(title)];
-          },
-          sentLabel(title) {
-            return { pos: "ポジティブ", neg: "ネガティブ／注意", neutral: "中立" }[this.classify(title)];
-          },
-          // 表題内のポジ/ネガ語・検索語を <span class="..."> で包んで色付けしたHTML文字列を返す
-          highlight(title) {
-            const esc = escapeHtml(title);         // ①まずHTMLを無害化（XSS対策）
-            const cfg = this.highlightConfig;      // ②対象語の正規表現＋クラス表（computedからキャッシュ取得）
+          }
+          function sentIcon(title) {
+            return { pos: "🟢", neg: "🔴", neutral: "⚪" }[classify(title)];
+          }
+          function sentLabel(title) {
+            return { pos: "ポジティブ", neg: "ネガティブ／注意", neutral: "中立" }[classify(title)];
+          }
+          function highlight(title) {
+            const esc = escapeHtml(title);
+            const cfg = highlightConfig.value; // computedのrefには .value でアクセス
             if (!cfg) return esc;
-            // ③一致した語を、その語に紐づくクラス付きspanへ置換（mは一致した文字列）
             return esc.replace(cfg.re, (m) => {
-              const cls = [...(cfg.map.get(m) || [])].join(" "); // Set→配列→スペース区切り文字列
+              const cls = [...(cfg.map.get(m) || [])].join(" ");
               return `<span class="${cls}">${m}</span>`;
             });
-          },
-
-          // ---- データ取得 ----
-          /*
-            async/await: 非同期処理（ネット通信のように「待ち」が発生する処理）を、
-            あたかも上から順に進むように書ける仕組み。await は「結果が返るまで待つ」。
-            ここではプロキシ経由でURLを取得し、失敗(408等)なら少し待って最大3回試す。
-          */
-          async fetchViaProxy(url) {
-            const target = PROXY + encodeURIComponent(url); // 対象URLをパラメータとして安全に連結
+          }
+          async function fetchViaProxy(url) {
+            const target = PROXY + encodeURIComponent(url);
             let lastErr;
             for (let attempt = 0; attempt < 3; attempt++) {
               try {
-                const res = await fetch(target);   // fetch: ネット取得。Promiseを返すのでawaitで待つ
-                if (res.ok) return await res.text(); // 成功なら本文(テキスト)を返して終了
+                const res = await fetch(target);
+                if (res.ok) return await res.text();
                 lastErr = new Error("HTTP " + res.status);
               } catch (e) {
-                lastErr = e; // 通信自体が失敗した場合
+                lastErr = e;
               }
-              await sleep(400 * (attempt + 1)); // 0.4秒→0.8秒と間隔を空けて再試行
+              await sleep(400 * (attempt + 1));
             }
-            throw lastErr || new Error("取得失敗"); // 3回ダメなら例外を投げる（呼び出し側でcatch）
-          },
-
-          // 1ページ分のHTML文字列から、開示行の配列を取り出す
-          parseRows(html, dateLabel) {
-            // DOMParser: HTML文字列を本物のDOM(要素ツリー)に変換する標準API。
-            // これで querySelector など、普通のDOM操作でデータを抜ける（正規表現より堅牢）。
+            throw lastErr || new Error("取得失敗");
+          }
+          function parseRows(html, dateLabel) {
             const doc = new DOMParser().parseFromString(html, "text/html");
-            const table = doc.querySelector("#main-list-table"); // 一覧テーブルを探す
-            if (!table) return []; // 休日など中身が無い日は空配列
+            const table = doc.querySelector("#main-list-table");
+            if (!table) return [];
             const rows = [];
             table.querySelectorAll("tr").forEach((tr) => {
               const titleCell = tr.querySelector("td.kjTitle");
-              if (!titleCell) return; // 表題セルが無い行(ヘッダ等)はスキップ
+              if (!titleCell) return;
               const link = titleCell.querySelector("a");
               const href = link ? link.getAttribute("href") : "";
               rows.push({
                 date: dateLabel,
-                // ?. は「あれば値、無ければundefined」の安全アクセス(オプショナルチェーン)。|| "" で空文字に
                 time: (tr.querySelector("td.kjTime")?.textContent || "").trim(),
                 code: (tr.querySelector("td.kjCode")?.textContent || "").trim(),
                 name: (tr.querySelector("td.kjName")?.textContent || "").trim(),
                 title: (titleCell.textContent || "").trim(),
-                pdf: href ? TDNET_BASE + href : "", // 相対リンク→絶対URLへ
+                pdf: href ? TDNET_BASE + href : "",
                 place: (tr.querySelector("td.kjPlace")?.textContent || "").trim(),
               });
             });
             return rows;
-          },
-
-          /*
-            検索の本体。期間を1日ずつ巡り、各日のページを取得→解析→キーワード絞り込み→results へ。
-            状態(loading/results 等)を更新するたび、画面はVueが自動で同期してくれる。
-          */
-          async search() {
-            if (this.loading) return; // 多重実行ガード
-            // キーワードを区切り（空白・カンマ・読点）で分割して複数語に。OR検索に使う
-            const rawKeywords = this.keyword
+          }
+          async function search() {
+            if (loading.value) return;
+            const rawKeywords = keyword.value
               .split(/[\s,、，]+/)
               .map((s) => s.trim())
               .filter(Boolean);
-            const normKeywords = rawKeywords.map(normalize); // 比較用に正規化したもの
+            const normKeywords = rawKeywords.map(normalize);
 
-            // 検索開始：状態を初期化（これらの代入で画面も即リセットされる）
-            this.loading = true;
-            this.searched = true;
-            this.errorMessage = "";
-            this.results = [];
-            this.lastKeyword = this.keyword.trim();
-            this.lastKeywords = rawKeywords; // ハイライトは元の表記で行う
+            // 検索開始：refの .value に代入するだけで画面が即更新される
+            loading.value = true;
+            searched.value = true;
+            errorMessage.value = "";
+            results.value = [];
+            lastKeyword.value = keyword.value.trim();
+            lastKeywords.value = rawKeywords;
 
-            const start = parseDate(this.fromDate);
-            const end = parseDate(this.toDate);
-            const collected = []; // 一旦ここに溜めて、最後にまとめて results へ入れる
+            const start = parseDate(fromDate.value);
+            const end = parseDate(toDate.value);
+            const collected = [];
             let anyError = false;
 
             try {
-              // 開始日から終了日まで1日ずつループ（dを1日進めながら回す）
               for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-                const dateStr = ymd(d);     // ファイル名用 YYYYMMDD
-                const dateLabel = iso(d);   // 表示用 YYYY-MM-DD
-                this.progress = `${dateLabel} を取得中…`;
+                const dateStr = ymd(d);
+                const dateLabel = iso(d);
+                progress.value = `${dateLabel} を取得中…`;
 
-                // まず1ページ目を取得。失敗したらその日は飛ばす
                 let firstHtml;
                 try {
-                  firstHtml = await this.fetchViaProxy(`${TDNET_BASE}I_list_001_${dateStr}.html`);
+                  firstHtml = await fetchViaProxy(`${TDNET_BASE}I_list_001_${dateStr}.html`);
                 } catch (e) {
                   anyError = true;
-                  continue; // 次の日へ
+                  continue;
                 }
 
-                // 「全N件」表記から総数を読み、100件/ページなので必要ページ数を計算
                 const m = firstHtml.match(/全([\d,]+)件/);
                 const total = m ? parseInt(m[1].replace(/,/g, ""), 10) : 0;
                 const pageCount = total > 0 ? Math.ceil(total / 100) : 1;
 
-                // 2ページ目以降も取得して全ページ分のHTMLを集める
                 const htmls = [firstHtml];
                 for (let p = 2; p <= pageCount; p++) {
-                  const pageNo = String(p).padStart(3, "0"); // 002, 003 ...
-                  this.progress = `${dateLabel} を取得中…（${p}/${pageCount}ページ）`;
+                  const pageNo = String(p).padStart(3, "0");
+                  progress.value = `${dateLabel} を取得中…（${p}/${pageCount}ページ）`;
                   try {
-                    htmls.push(await this.fetchViaProxy(`${TDNET_BASE}I_list_${pageNo}_${dateStr}.html`));
+                    htmls.push(await fetchViaProxy(`${TDNET_BASE}I_list_${pageNo}_${dateStr}.html`));
                   } catch (e) {
                     anyError = true;
                   }
                 }
 
-                // 各ページを解析し、キーワード（OR）に一致する行だけ集める
                 for (const html of htmls) {
-                  for (const row of this.parseRows(html, dateLabel)) {
+                  for (const row of parseRows(html, dateLabel)) {
                     const t = normalize(row.title);
-                    // some: いずれかの語が含まれればtrue。語が無指定なら全件通す
                     if (!normKeywords.length || normKeywords.some((k) => t.includes(k))) {
                       collected.push(row);
                     }
@@ -851,25 +781,36 @@
                 }
               }
 
-              // 新しい開示が上に来るよう「日付＋時刻」の文字列で降順ソート
               collected.sort((a, b) => (b.date + b.time).localeCompare(a.date + a.time));
-              this.results = collected; // ← ここで状態確定。表が一気に描画される
+              results.value = collected;
 
-              // 1件も取れずエラーもあった＝おそらくプロキシ不調
-              if (!this.results.length && anyError) {
-                this.errorMessage =
+              if (!results.value.length && anyError) {
+                errorMessage.value =
                   "一部または全部の取得に失敗しました。プロキシが混雑している可能性があります。少し待って再検索してください。";
               }
             } catch (e) {
-              this.errorMessage = "検索中にエラーが発生しました：" + e.message;
+              errorMessage.value = "検索中にエラーが発生しました：" + e.message;
             } finally {
-              // finally: 成功でも失敗でも最後に必ず実行。後片付け（取得中フラグを下ろす）に最適
-              this.loading = false;
-              this.progress = "";
+              loading.value = false;
+              progress.value = "";
             }
-          },
+          }
+
+          // ---- テンプレートへの公開 ----
+          // returnしたものだけテンプレートから {{ }} や v-model 等で参照できる
+          // parseRows/fetchViaProxy など内部だけで使う関数はreturn不要
+          return {
+            testInput, keyword, fromDate, toDate, today, loading, searched, progress,
+            errorMessage, lastKeyword, results, darkMode,
+            favOnly, favTop, watchlist, watchlistText, watchlistMsg, presets,
+            displayedResults, favHitCount,
+            favOf, favClass, catLabel,
+            saveWatchlist, resetWatchlist,
+            toggleDark, applyPreset,
+            sentIcon, sentLabel, highlight, search,
+          };
         },
-      }).mount("#app"); // 組み立てたアプリを画面の #app に接続して起動
+      }).mount("#app");
     </script>
   </body>
 </html>
