@@ -55,49 +55,25 @@
         【解説：CSS変数（カスタムプロパティ）】
         --xxx という名前で「色などの値」を定義し、後で var(--xxx) で参照できる。
         :root は「ページ全体の最上位」を指す擬似セレクタ。ここで定義した変数はどこからでも使える。
-        ↓これがライトモードの配色セット。
       */
       :root {
-        --bg: #f4f6f8;        /* ページ背景 */
-        --fg: #222;           /* 文字色（foreground） */
-        --card: #fff;         /* カードや表の背景 */
-        --border: #e0e0e0;    /* 枠線 */
-        --muted: #666;        /* 補助的な薄い文字 */
-        --th: #f0f3f7;        /* 表ヘッダ背景 */
-        --even: #fafbfc;      /* 表の偶数行背景（ゼブラ模様） */
-        --link: #2563eb;      /* リンク色 */
-        --hover: #eef3ff;     /* マウスホバー時の背景 */
-        --hl: #fff3b0;        /* キーワード一致のマーカー色 */
-        --pos: #15803d;       /* ポジティブ語（緑） */
-        --neg: #c0392b;       /* ネガティブ語（赤） */
-        --fav-owned-bg: #fff7e6;     /* 保有銘柄の行背景 */
-        --fav-owned-accent: #f59e0b; /* 保有銘柄の左アクセント線 */
-        --fav-watch-bg: #f3f4f6;     /* ウォッチ銘柄の行背景 */
-        --fav-watch-accent: #9ca3af; /* ウォッチ銘柄の左アクセント線 */
-      }
-      /*
-        【解説：ダークモードの実装】
-        body に "dark" クラスが付いたときだけ、同じ変数名を「暗い色」で上書きする。
-        変数を差し替えるだけで、これらの変数を使う全要素の色が一斉に切り替わる。
-        （JS側で this.darkMode を切り替えると body.classList に "dark" を付け外しする）
-      */
-      body.dark {
-        --bg: #1b1d21;
-        --fg: #e6e6e6;
-        --card: #26292e;
-        --border: #3a3d42;
-        --muted: #9aa0a6;
-        --th: #2f3338;
-        --even: #22252a;
-        --link: #7aa7ff;
-        --hover: #2c323d;
-        --hl: rgba(250, 204, 21, 0.28);
-        --pos: #4ade80;
-        --neg: #f87171;
-        --fav-owned-bg: #36301f;
-        --fav-owned-accent: #f59e0b;
-        --fav-watch-bg: #2c2f34;
-        --fav-watch-accent: #6b7280;
+        /* ダークモードの配色セットを適用 */
+        --bg: #1b1d21;                  /* ページ背景 */
+        --fg: #e6e6e6;                  /* 文字色（foreground） */
+        --card: #26292e;                /* カードや表の背景 */
+        --border: #3a3d42;              /* 枠線 */
+        --muted: #9aa0a6;               /* 補助的な薄い文字 */
+        --th: #2f3338;                  /* 表ヘッダ背景 */
+        --even: #22252a;                /* 表の偶数行背景（ゼブラ模様） */
+        --link: #7aa7ff;                /* リンク色 */
+        --hover: #2c323d;               /* マウスホバー時の背景 */
+        --hl: rgba(250, 204, 21, 0.28); /* キーワード一致のマーカー色 */
+        --pos: #4ade80;                 /* ポジティブ語（緑） */
+        --neg: #f87171;                 /* ネガティブ語（赤） */
+        --fav-owned-bg: #36301f;        /* 保有銘柄の行背景 */
+        --fav-owned-accent: #f59e0b;    /* 保有銘柄の左アクセント線 */
+        --fav-watch-bg: #2c2f34;        /* ウォッチ銘柄の行背景 */
+        --fav-watch-accent: #6b7280;    /* ウォッチ銘柄の左アクセント線 */
       }
       body {
         /* 【解説】font-family: 先頭から順にフォントを探し、無ければ次の候補へ（フォールバック） */
@@ -550,7 +526,6 @@
           const lastKeyword  = ref("");
           const lastKeywords = ref([]);
           const results      = ref([]);
-          const darkMode     = ref(false);
           const favOnly      = ref(false);
           const favTop       = ref(true);
           const watchlist    = ref(DEFAULT_WATCHLIST.slice());
@@ -603,9 +578,7 @@
 
           // ---- 監視（Options APIのwatch:{}に相当） ----
           // watch(監視対象のref, コールバック) に変換。this不要
-          watch(darkMode, (v) => {
-            document.body.classList.toggle("dark", v);
-          });
+          // watch(ref_var, (args) => {});
 
           // ---- ライフサイクル（Options APIのmounted()に相当） ----
           onMounted(() => {
@@ -614,8 +587,6 @@
               if (saved) watchlist.value = JSON.parse(saved);
             } catch (e) { /* 壊れていたら既定を使う */ }
             watchlistText.value = serializeWatchlist(watchlist.value);
-            darkMode.value = localStorage.getItem("tdnet_dark") === "1";
-            document.body.classList.toggle("dark", darkMode.value);
           });
 
           // ---- 関数群（Options APIのmethods:{}に相当） ----
@@ -656,10 +627,6 @@
             watchlistText.value = serializeWatchlist(watchlist.value);
             localStorage.removeItem("tdnet_watchlist");
             watchlistMsg.value = "初期値に戻しました";
-          }
-          function toggleDark() {
-            darkMode.value = !darkMode.value; // 真偽を反転。watchが拾ってbodyクラスを切り替える
-            localStorage.setItem("tdnet_dark", darkMode.value ? "1" : "0");
           }
           function applyPreset(value) {
             keyword.value = value;
@@ -801,12 +768,12 @@
           // parseRows/fetchViaProxy など内部だけで使う関数はreturn不要
           return {
             testInput, keyword, fromDate, toDate, today, loading, searched, progress,
-            errorMessage, lastKeyword, results, darkMode,
+            errorMessage, lastKeyword, results,
             favOnly, favTop, watchlist, watchlistText, watchlistMsg, presets,
             displayedResults, favHitCount,
             favOf, favClass, catLabel,
             saveWatchlist, resetWatchlist,
-            toggleDark, applyPreset,
+            applyPreset,
             sentIcon, sentLabel, highlight, search,
           };
         },
