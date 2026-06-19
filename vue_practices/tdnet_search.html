@@ -245,7 +245,7 @@
         </div>
         <div class="field">
           <label>終了日</label>
-          <input type="date" v-model="toDate" :min="fromDate" :max="today" />
+          <input type="date" v-model="toDate" :max="today" />
         </div>
         <!-- :disabled="loading" で検索中はボタンを無効化（二重実行防止）。文言も三項演算子で切替 -->
         <button class="search" @click="search" :disabled="loading">
@@ -512,7 +512,7 @@
           // ref()で包むとリアクティブになる。JS内は .value でアクセス、テンプレートは自動解除
           const now = new Date();
           const from = new Date(now);
-          from.setDate(from.getDate() - 7);
+          from.setDate(from.getDate() - 1); // デフォルトで、1日前〜当日までを検索期間に指定する
 
           const testInput    = ref("");
           const keyword      = ref("優待");
